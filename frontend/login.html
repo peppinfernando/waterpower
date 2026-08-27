@@ -68,7 +68,11 @@
 
 <script>
   // Show an error banner if we were redirected back here after a failed attempt.
-  if (new URLSearchParams(location.search).get("error")) {
+  const errorType = new URLSearchParams(location.search).get("error");
+  if (errorType === "expired") {
+    document.getElementById("errorMsg").textContent = "This trial login has expired. Please contact Waterpower for continued access.";
+    document.getElementById("errorMsg").classList.add("show");
+  } else if (errorType) {
     document.getElementById("errorMsg").classList.add("show");
   }
 </script>

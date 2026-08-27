@@ -120,10 +120,12 @@ def _serve_static_file(name: str):
 async def _handle_login(request: Request):
     form = await request.form()
     username, password = form.get("username", ""), form.get("password", "")
-    if auth.check_credentials(username, password):
+    ok, reason = auth.check_credentials(username, password)
+    if ok:
         request.session["authenticated"] = True
         return RedirectResponse("/", status_code=303)
-    return RedirectResponse("/login?error=1", status_code=303)
+    error_code = "expired" if reason == "expired" else "1"
+    return RedirectResponse(f"/login?error={error_code}", status_code=303)
 
 
 # Serves the dashboard itself (frontend/index.html and its assets) from the

@@ -23,13 +23,24 @@ NOTIONAL_LOAD_MW = float(os.getenv("NOTIONAL_LOAD_MW", "1.0"))
 
 def rebuild_cost_records(db: Session, start: datetime, end: datetime) -> int:
     """Upserts CostRecord rows for [start, end) from prices + (actual or
-    notional) usage. Returns the number of rows written."""
+    notional) usage. Returns the number of rows written.
+
+    Performance note: this used to check for an existing CostRecord with
+    one SELECT per settlement price inside the loop — fine locally against
+    SQLite, but a real problem against a remote database, where each
+    round-trip costs real network latency. A yearly view (17,520 rows)
+    meant 17,520+ individual queries. Fetching all existing records for
+    the range up front in a single query, then matching in Python,
+    collapses that down to at most 2 queries total regardless of range
+    size."""
     prices = db.scalars(
         select(SettlementPrice).where(
             SettlementPrice.interval_start >= start,
             SettlementPrice.interval_start < end,
         )
     ).all()
+    if not prices:
+        return 0
 
     usage_by_start = {
         u.interval_start: u.volume_mwh
@@ -41,26 +52,31 @@ def rebuild_cost_records(db: Session, start: datetime, end: datetime) -> int:
         ).all()
     }
 
-    written = 0
+    existing_by_key = {
+        (r.interval_start, r.interval_minutes): r
+        for r in db.scalars(
+            select(CostRecord).where(
+                CostRecord.interval_start >= start,
+                CostRecord.interval_start < end,
+            )
+        ).all()
+    }
+
+    new_records = []
     for p in prices:
         actual_volume = usage_by_start.get(p.interval_start)
         is_actual = actual_volume is not None
         volume = actual_volume if is_actual else NOTIONAL_LOAD_MW * (p.interval_minutes / 60)
         cost = round(p.price_eur_per_mwh * volume, 4)
 
-        existing = db.scalar(
-            select(CostRecord).where(
-                CostRecord.interval_start == p.interval_start,
-                CostRecord.interval_minutes == p.interval_minutes,
-            )
-        )
+        existing = existing_by_key.get((p.interval_start, p.interval_minutes))
         if existing:
             existing.price_eur_per_mwh = p.price_eur_per_mwh
             existing.volume_mwh = volume
             existing.volume_is_actual = "actual" if is_actual else "notional"
             existing.cost_eur = cost
         else:
-            db.add(CostRecord(
+            new_records.append(CostRecord(
                 interval_start=p.interval_start,
                 interval_minutes=p.interval_minutes,
                 price_eur_per_mwh=p.price_eur_per_mwh,
@@ -68,10 +84,12 @@ def rebuild_cost_records(db: Session, start: datetime, end: datetime) -> int:
                 volume_is_actual="actual" if is_actual else "notional",
                 cost_eur=cost,
             ))
-        written += 1
+
+    if new_records:
+        db.bulk_save_objects(new_records)
 
     db.commit()
-    return written
+    return len(prices)
 
 
 def get_daily_costs(db: Session, day: date) -> List[CostRecord]:
