@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in — Waterpower Energy Cost Dashboard</title>
+<title>Sign in — WalterJr Tech Solutions Energy Cost Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -49,8 +49,8 @@
 <body>
   <form class="card" method="POST" action="/login" id="loginForm">
     <div class="brand-row">
-      <svg class="brand-logo" viewBox="0 0 32 32" fill="none"><path d="M16 3C10 11 6 16.5 6 21a10 10 0 0020 0c0-4.5-4-10-10-18z" fill="#0B4F6C"/><path d="M16 3C10 11 6 16.5 6 21a10 10 0 0020 0c0-4.5-4-10-10-18z" fill="#2E8B57" opacity="0.55" transform="translate(2,4) scale(0.72)"/></svg>
-      <span class="brand-word">Waterpower</span>
+      <svg class="brand-logo" viewBox="0 0 32 32" fill="none"><path d="M18 2L6 18h8l-2 12 14-18h-9l1-10z" fill="#0B4F6C"/><path d="M18 2L6 18h8l-2 12 14-18h-9l1-10z" fill="#2E8B57" opacity="0.5" transform="translate(2,3) scale(0.7)"/></svg>
+      <span class="brand-word">WalterJr Tech Solutions</span>
     </div>
     <h1>Energy cost dashboard</h1>
     <p class="sub">Sign in to view procurement cost data.</p>
@@ -70,7 +70,7 @@
   // Show an error banner if we were redirected back here after a failed attempt.
   const errorType = new URLSearchParams(location.search).get("error");
   if (errorType === "expired") {
-    document.getElementById("errorMsg").textContent = "This trial login has expired. Please contact Waterpower for continued access.";
+    document.getElementById("errorMsg").textContent = "This trial login has expired. Please contact WalterJr Tech Solutions for continued access.";
     document.getElementById("errorMsg").classList.add("show");
   } else if (errorType) {
     document.getElementById("errorMsg").classList.add("show");

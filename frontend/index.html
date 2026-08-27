@@ -10,7 +10,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <style>
   :root {
-    /* Waterpower brand palette — starting point derived from their
+    /* WalterJr Tech brand palette — a starting point derived from an
        positioning (hydro/renewable, Irish, savings-focused). Swap these
        for exact brand hex values once we have their logo/style guide or
        a screenshot of the live site to match precisely. */
@@ -21,7 +21,7 @@
     --text: #10262A;
     --text-2: #56706E;
     --text-3: #87A09E;
-    --navy: #0B4F6C;       /* Waterpower blue — hydro/water */
+    --navy: #0B4F6C;       /* primary brand blue */
     --navy-2: #146A8C;
     --teal: #2E8B57;       /* renewable green */
     --teal-2: #DCEFE2;
@@ -224,11 +224,11 @@
   <div class="topbar">
     <div>
       <div class="brand-row">
-        <svg class="brand-logo" viewBox="0 0 32 32" fill="none"><path d="M16 3C10 11 6 16.5 6 21a10 10 0 0020 0c0-4.5-4-10-10-18z" fill="var(--navy)"/><path d="M16 3C10 11 6 16.5 6 21a10 10 0 0020 0c0-4.5-4-10-10-18z" fill="var(--teal)" opacity="0.55" transform="translate(2,4) scale(0.72)"/></svg>
-        <span class="brand-word">Waterpower</span>
+        <svg class="brand-logo" viewBox="0 0 32 32" fill="none"><path d="M18 2L6 18h8l-2 12 14-18h-9l1-10z" fill="var(--navy)"/><path d="M18 2L6 18h8l-2 12 14-18h-9l1-10z" fill="var(--teal)" opacity="0.5" transform="translate(2,3) scale(0.7)"/></svg>
+        <span class="brand-word">WalterJr Tech Solutions</span>
       </div>
       <h1>Energy cost &amp; billing dashboard</h1>
-      <span class="tagline">Renewable power, sourced locally in Kanturk — transparent wholesale pricing behind every tariff.</span>
+      <span class="tagline">Independent I-SEM wholesale cost tracking — transparent pricing behind every tariff decision.</span>
     </div>
     <div class="topbar-actions">
       <button class="btn" id="exportBtn">
@@ -319,8 +319,8 @@
   </div>
 
   <footer class="app-footer">
-    <span class="brand-word" style="font-size:13px;">Waterpower</span>
-    <span>· Licensed electricity retailer regulated by the Commission for Regulation of Utilities (CRU) · Strand Street, Kanturk, Co. Cork · Wholesale price data sourced from SEM-O's I-SEM Balancing Market</span>
+    <span class="brand-word" style="font-size:13px;">WalterJr Tech Solutions</span>
+    <span>· Energy procurement cost tracking prototype · Wholesale price data sourced from SEM-O's I-SEM Balancing Market</span>
   </footer>
 
 </div>
@@ -752,7 +752,7 @@ function styledSheet(rows, columnDefs) {
 
   const headerStyle = {
     font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11 },
-    fill: { fgColor: { rgb: "0B4F6C" } }, // Waterpower brand blue
+    fill: { fgColor: { rgb: "0B4F6C" } }, // WalterJr Tech brand blue
     alignment: { horizontal: "left", vertical: "center" },
   };
 
@@ -808,7 +808,7 @@ document.getElementById("exportBtn").onclick = () => {
     ]);
     XLSX.utils.book_append_sheet(wb, bandsSheet, "Price bands");
 
-    XLSX.writeFile(wb, `waterpower-procurement-cost-${data.date}.xlsx`);
+    XLSX.writeFile(wb, `walterjr-procurement-cost-${data.date}.xlsx`);
   } else {
     const rowsSheet = styledSheet(data.points, [
       { key: "label", header: data.granularity === "monthly" ? "Month" : "Date", width: 16 },
@@ -831,7 +831,7 @@ document.getElementById("exportBtn").onclick = () => {
       XLSX.utils.book_append_sheet(wb, compSheet, "YoY comparison");
     }
 
-    XLSX.writeFile(wb, `waterpower-procurement-cost-${data.start}-to-${data.end}.xlsx`);
+    XLSX.writeFile(wb, `walterjr-procurement-cost-${data.start}-to-${data.end}.xlsx`);
   }
 };
 

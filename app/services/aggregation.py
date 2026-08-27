@@ -13,7 +13,7 @@ import os
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from app.models import SettlementPrice, UsageInterval, CostRecord
@@ -25,14 +25,43 @@ def rebuild_cost_records(db: Session, start: datetime, end: datetime) -> int:
     """Upserts CostRecord rows for [start, end) from prices + (actual or
     notional) usage. Returns the number of rows written.
 
-    Performance note: this used to check for an existing CostRecord with
-    one SELECT per settlement price inside the loop — fine locally against
-    SQLite, but a real problem against a remote database, where each
-    round-trip costs real network latency. A yearly view (17,520 rows)
-    meant 17,520+ individual queries. Fetching all existing records for
-    the range up front in a single query, then matching in Python,
-    collapses that down to at most 2 queries total regardless of range
-    size."""
+    Performance note (v1): this used to check for an existing CostRecord
+    with one SELECT per settlement price inside the loop — fine locally
+    against SQLite, but a real problem against a remote database, where
+    each round-trip costs real network latency. Fetching all existing
+    records for the range up front in a single query, then matching in
+    Python, collapsed that down to at most 3 queries regardless of range
+    size.
+
+    Performance note (v2): once a date is fully in the past, its
+    settlement prices are final — SEM-O doesn't retroactively change
+    published settlement prices, and once computed, that date's costs
+    can't change either (short of the notional-load assumption itself
+    changing, which is rare enough not to optimize for). So for a past
+    range, if CostRecord already fully covers it, skip straight past
+    the settlement_prices/usage_intervals tables entirely — a single
+    COUNT comparison instead of re-fetching and re-diffing every row.
+    Only ranges touching today or the future — where new settlement
+    prices are still arriving via ingestion — pay the full rebuild cost.
+    """
+    is_fully_past = end <= datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+    if is_fully_past:
+        price_count = db.scalar(
+            select(func.count(SettlementPrice.id)).where(
+                SettlementPrice.interval_start >= start,
+                SettlementPrice.interval_start < end,
+            )
+        )
+        if price_count:
+            cost_count = db.scalar(
+                select(func.count(CostRecord.id)).where(
+                    CostRecord.interval_start >= start,
+                    CostRecord.interval_start < end,
+                )
+            )
+            if cost_count == price_count:
+                return cost_count  # already fully computed, nothing to do
+
     prices = db.scalars(
         select(SettlementPrice).where(
             SettlementPrice.interval_start >= start,
