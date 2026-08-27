@@ -10,10 +10,54 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <style>
   :root {
-    /* WalterJr Tech brand palette — a starting point derived from an
-       positioning (hydro/renewable, Irish, savings-focused). Swap these
-       for exact brand hex values once we have their logo/style guide or
-       a screenshot of the live site to match precisely. */
+    /* WalterJr Tech Solutions — a generic, deliberately non-water-themed
+       tech-consultancy identity (indigo-slate + steel blue), distinct
+       from the Waterpower-inspired palette below. Having WalterJr's own
+       look, rather than reusing Waterpower's colors by default, is what
+       makes the brand-preview toggle (see #brandPreviewBtn) feel like an
+       actual transformation instead of a label swap. */
+    --bg: #F5F6F8;
+    --surface: #FFFFFF;
+    --surface-2: #ECEEF3;
+    --border: #DBDEE6;
+    --text: #1A1D29;
+    --text-2: #5C6178;
+    --text-3: #8B90A6;
+    --navy: #2D3250;       /* primary brand color — deep indigo-slate */
+    --navy-2: #454B6B;
+    --teal: #5B8DB8;       /* secondary accent — steel blue, neutral "tech" feel */
+    --teal-2: #E4EDF3;
+    --copper: #C97B3D;     /* cost-highlight amber */
+    --copper-2: #F5E3D0;
+    --shadow: 0 1px 2px rgba(45,50,80,0.07), 0 8px 24px rgba(45,50,80,0.06);
+    --radius: 12px;
+  }
+  html[data-theme="dark"] {
+    --bg: #14151F;
+    --surface: #1D1F2E;
+    --surface-2: #262838;
+    --border: #383B52;
+    --text: #EBECF3;
+    --text-2: #9CA0B8;
+    --text-3: #666B85;
+    --navy: #8FA3D9;
+    --navy-2: #B0C0E8;
+    --teal: #7FA8CC;
+    --teal-2: #1E2A38;
+    --copper: #E0985A;
+    --copper-2: #3A2A18;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 12px 32px rgba(0,0,0,0.35);
+  }
+
+  /* Waterpower brand preview — toggled via #brandPreviewBtn, not the
+     default. Approximated from their positioning (hydro/renewable,
+     Irish, savings-focused), not extracted from their actual site —
+     swap for exact values once we have their logo/style guide or a
+     screenshot to match precisely. This is a visual preview only; see
+     the disclaimer badge shown alongside it (#brandPreviewBadge) and the
+     footer, which deliberately makes no claims about Waterpower even
+     while this is active. */
+  html[data-brand="waterpower"] {
     --bg: #F4F7F6;
     --surface: #FFFFFF;
     --surface-2: #EAF1EF;
@@ -21,16 +65,15 @@
     --text: #10262A;
     --text-2: #56706E;
     --text-3: #87A09E;
-    --navy: #0B4F6C;       /* primary brand blue */
+    --navy: #0B4F6C;
     --navy-2: #146A8C;
-    --teal: #2E8B57;       /* renewable green */
+    --teal: #2E8B57;
     --teal-2: #DCEFE2;
-    --copper: #D98A2B;     /* savings/cost-highlight amber */
+    --copper: #D98A2B;
     --copper-2: #FBE9CE;
     --shadow: 0 1px 2px rgba(11,79,108,0.07), 0 8px 24px rgba(11,79,108,0.06);
-    --radius: 12px;
   }
-  html[data-theme="dark"] {
+  html[data-brand="waterpower"][data-theme="dark"] {
     --bg: #0A1618;
     --surface: #12201F;
     --surface-2: #172A28;
@@ -44,7 +87,6 @@
     --teal-2: #163828;
     --copper: #E58A50;
     --copper-2: #3A2618;
-    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 12px 32px rgba(0,0,0,0.35);
   }
 
   * { box-sizing: border-box; }
@@ -71,6 +113,11 @@
   }
   .tagline {
     display: block; font-size: 13px; color: var(--text-2); margin-top: 6px; max-width: 46ch;
+  }
+  .brand-preview-badge {
+    display: flex; align-items: center; gap: 6px; background: var(--copper-2);
+    color: var(--copper); font-size: 12px; font-weight: 500; padding: 8px 14px;
+    border-radius: 8px; margin-bottom: 16px; width: fit-content;
   }
   h1 {
     font-family: 'Space Grotesk', sans-serif; font-weight: 600;
@@ -272,16 +319,25 @@
 <body>
 <div class="app">
 
+  <div class="brand-preview-badge" id="brandPreviewBadge" style="display:none">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    Customization preview — not affiliated with Waterpower
+  </div>
+
   <div class="topbar">
     <div>
       <div class="brand-row">
-        <svg class="brand-logo" viewBox="0 0 32 32" fill="none"><path d="M18 2L6 18h8l-2 12 14-18h-9l1-10z" fill="var(--navy)"/><path d="M18 2L6 18h8l-2 12 14-18h-9l1-10z" fill="var(--teal)" opacity="0.5" transform="translate(2,3) scale(0.7)"/></svg>
-        <span class="brand-word">WalterJr Tech Solutions</span>
+        <svg class="brand-logo" id="brandLogo" viewBox="0 0 32 32" fill="none"><path d="M18 2L6 18h8l-2 12 14-18h-9l1-10z" fill="var(--navy)"/><path d="M18 2L6 18h8l-2 12 14-18h-9l1-10z" fill="var(--teal)" opacity="0.5" transform="translate(2,3) scale(0.7)"/></svg>
+        <span class="brand-word" id="brandWord">WalterJr Tech Solutions</span>
       </div>
       <h1>Energy cost &amp; billing dashboard</h1>
-      <span class="tagline">Independent I-SEM wholesale cost tracking — transparent pricing behind every tariff decision.</span>
+      <span class="tagline" id="brandTagline">Independent I-SEM wholesale cost tracking — transparent pricing behind every tariff decision.</span>
     </div>
     <div class="topbar-actions">
+      <button class="btn" id="brandPreviewBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        Preview: Waterpower
+      </button>
       <button class="btn" id="tariffBtn">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
         Tariff calculator
@@ -463,6 +519,42 @@ function applyTheme(t) {
 document.getElementById("themeToggle").onclick = () =>
   applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark");
 applyTheme(safeGetItem("theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+
+/* ---------- Brand preview toggle ----------
+   Swaps the visual identity to a Waterpower-inspired look for sales-demo
+   purposes — colors and wordmark only, never the footer's factual claims
+   (no regulatory/address text is added back in preview mode) and always
+   paired with a visible "not affiliated" badge, so a screenshot taken
+   mid-preview can't be mistaken for an actual claim of partnership. Not
+   persisted across reloads — starting each session on the real WalterJr
+   identity is the safer default. */
+const BRAND_LOGOS = {
+  walterjr: '<path d="M18 2L6 18h8l-2 12 14-18h-9l1-10z" fill="var(--navy)"/><path d="M18 2L6 18h8l-2 12 14-18h-9l1-10z" fill="var(--teal)" opacity="0.5" transform="translate(2,3) scale(0.7)"/>',
+  waterpower: '<path d="M16 3C10 11 6 16.5 6 21a10 10 0 0020 0c0-4.5-4-10-10-18z" fill="var(--navy)"/><path d="M16 3C10 11 6 16.5 6 21a10 10 0 0020 0c0-4.5-4-10-10-18z" fill="var(--teal)" opacity="0.55" transform="translate(2,4) scale(0.72)"/>',
+};
+const BRAND_TEXT = {
+  walterjr: { word: "WalterJr Tech Solutions", tagline: "Independent I-SEM wholesale cost tracking — transparent pricing behind every tariff decision." },
+  waterpower: { word: "Waterpower", tagline: "Renewable energy — transparent wholesale pricing behind every tariff decision." },
+};
+let brandPreview = false;
+function applyBrand(brand) {
+  if (brand === "waterpower") root.setAttribute("data-brand", "waterpower");
+  else root.removeAttribute("data-brand");
+  document.getElementById("brandLogo").innerHTML = BRAND_LOGOS[brand];
+  document.getElementById("brandWord").textContent = BRAND_TEXT[brand].word;
+  document.getElementById("brandTagline").textContent = BRAND_TEXT[brand].tagline;
+  document.getElementById("brandPreviewBadge").style.display = brand === "waterpower" ? "flex" : "none";
+  const btn = document.getElementById("brandPreviewBtn");
+  btn.innerHTML = brand === "waterpower"
+    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg> Exit preview'
+    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview: Waterpower';
+  if (currentData) render(); // repaint chart colors for the new palette
+}
+document.getElementById("brandPreviewBtn").onclick = () => {
+  brandPreview = !brandPreview;
+  applyBrand(brandPreview ? "waterpower" : "walterjr");
+};
+applyBrand("walterjr");
 
 /* ---------- Tabs & date range ---------- */
 
