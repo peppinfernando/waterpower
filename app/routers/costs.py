@@ -1,7 +1,7 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -11,8 +11,21 @@ from app import schemas
 router = APIRouter(prefix="/api/costs", tags=["costs"])
 
 
+def _set_cache_headers(response: Response, range_end_exclusive: date):
+    """Historical data (any range ending before today) can't change once
+    computed, so it's safe to let the browser cache it for an hour and
+    skip the network entirely on repeat views — the auto-refresh timer,
+    revisiting the same date, switching tabs and back, etc. Anything
+    touching today or the future stays uncached since new settlement
+    prices are still arriving for those periods."""
+    if range_end_exclusive <= date.today():
+        response.headers["Cache-Control"] = "public, max-age=3600"
+    else:
+        response.headers["Cache-Control"] = "no-store"
+
+
 @router.get("/daily", response_model=schemas.DailyCostResponse)
-def daily(date_: date, db: Session = Depends(get_db)):
+def daily(date_: date, response: Response, db: Session = Depends(get_db)):
     records = aggregation.get_daily_costs(db, date_)
     if not records:
         raise HTTPException(404, f"No settlement price data for {date_}")
@@ -23,6 +36,8 @@ def daily(date_: date, db: Session = Depends(get_db)):
 
     hourly = aggregation.get_daily_costs_hourly(db, date_)
     price_bands = aggregation.get_price_band_summary(hourly)
+
+    _set_cache_headers(response, date_ + timedelta(days=1))
 
     return schemas.DailyCostResponse(
         date=date_,
@@ -47,7 +62,7 @@ def daily(date_: date, db: Session = Depends(get_db)):
 
 
 @router.get("/weekly", response_model=schemas.WeeklyCostResponse)
-def weekly(week_start: date, db: Session = Depends(get_db)):
+def weekly(week_start: date, response: Response, db: Session = Depends(get_db)):
     week_end = week_start + timedelta(days=7)
     days = aggregation.get_range_costs_by_day(db, week_start, week_end)
     if not days:
@@ -55,6 +70,8 @@ def weekly(week_start: date, db: Session = Depends(get_db)):
 
     total_cost = sum(d["cost_eur"] for d in days)
     total_volume = sum(d["volume_mwh"] for d in days)
+
+    _set_cache_headers(response, week_end)
 
     return schemas.WeeklyCostResponse(
         week_start=week_start,
@@ -66,13 +83,15 @@ def weekly(week_start: date, db: Session = Depends(get_db)):
 
 
 @router.get("/yearly", response_model=schemas.YearlyCostResponse)
-def yearly(year: int, db: Session = Depends(get_db)):
+def yearly(year: int, response: Response, db: Session = Depends(get_db)):
     months = aggregation.get_yearly_costs_by_month(db, year)
     if not months:
         raise HTTPException(404, f"No data for {year}")
 
     total_cost = sum(m["cost_eur"] for m in months)
     total_volume = sum(m["volume_mwh"] for m in months)
+
+    _set_cache_headers(response, date(year + 1, 1, 1))
 
     return schemas.YearlyCostResponse(
         year=year,
@@ -83,7 +102,7 @@ def yearly(year: int, db: Session = Depends(get_db)):
 
 
 @router.get("/range", response_model=schemas.RangeCostResponse)
-def range_(start: date, end: date, db: Session = Depends(get_db)):
+def range_(start: date, end: date, response: Response, db: Session = Depends(get_db)):
     """Free-form From/To range for the custom date picker. Granularity is
     picked automatically based on the span (see get_range_costs_auto):
     a 1-day range returns hourly points, a multi-week/month range returns
@@ -98,6 +117,8 @@ def range_(start: date, end: date, db: Session = Depends(get_db)):
 
     total_cost = sum(p["cost_eur"] for p in result["points"])
     total_volume = sum(p["volume_mwh"] for p in result["points"])
+
+    _set_cache_headers(response, end)
 
     return schemas.RangeCostResponse(
         start=start,
@@ -140,7 +161,7 @@ def compare(
 
 
 @router.get("/monthly", response_model=schemas.MonthlyCostResponse)
-def monthly(year: int, month: int, db: Session = Depends(get_db)):
+def monthly(year: int, month: int, response: Response, db: Session = Depends(get_db)):
     start_day = date(year, month, 1)
     end_day = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
     days = aggregation.get_range_costs_by_day(db, start_day, end_day)
@@ -149,6 +170,8 @@ def monthly(year: int, month: int, db: Session = Depends(get_db)):
 
     total_cost = sum(d["cost_eur"] for d in days)
     total_volume = sum(d["volume_mwh"] for d in days)
+
+    _set_cache_headers(response, end_day)
 
     return schemas.MonthlyCostResponse(
         year=year,
