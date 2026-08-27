@@ -72,6 +72,10 @@
   .tagline {
     display: block; font-size: 13px; color: var(--text-2); margin-top: 6px; max-width: 46ch;
   }
+  .data-note {
+    display: flex; align-items: center; gap: 6px; margin-top: 10px;
+    font-size: 12px; color: var(--copper); max-width: 50ch;
+  }
   h1 {
     font-family: 'Space Grotesk', sans-serif; font-weight: 600;
     font-size: clamp(22px, 3.4vw, 30px); margin: 0; letter-spacing: -0.01em;
@@ -197,9 +201,57 @@
     display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 8px;
   }
 
+  /* ---- Tariff calculator panel ---- */
+  .tariff-panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px; box-shadow: var(--shadow); margin-bottom: 22px;
+  }
+  .tariff-panel-header {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;
+  }
+  .tariff-panel-header h2 {
+    font-family: 'Space Grotesk', sans-serif; font-size: 17px; font-weight: 600; margin: 0;
+  }
+  .tariff-panel-sub {
+    font-size: 13px; color: var(--text-2); margin: 4px 0 16px; max-width: 62ch;
+  }
+  .tariff-bands {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px; margin-top: 18px;
+  }
+  .tariff-band-card {
+    background: var(--surface-2); border-radius: 10px; padding: 16px;
+  }
+  .tariff-band-name {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 14px;
+    text-transform: capitalize; margin-bottom: 2px;
+  }
+  .tariff-band-hours { font-size: 12px; color: var(--text-3); margin-bottom: 12px; }
+  .tariff-band-row {
+    display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0;
+    font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;
+  }
+  .tariff-band-row .label { color: var(--text-2); font-family: 'Inter', sans-serif; }
+  .tariff-retail-price { font-size: 20px; font-weight: 600; color: var(--teal); }
+  .tariff-blended {
+    margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);
+    font-size: 13px; color: var(--text-2);
+  }
+
   .empty-state {
     text-align: center; padding: 48px 20px; color: var(--text-2); font-size: 14px;
   }
+
+  .loading-overlay {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; padding: 40px 20px; color: var(--text-2); font-size: 13px;
+  }
+  .loading-spinner {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 3px solid var(--border); border-top-color: var(--teal);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   .app-footer {
     margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border);
@@ -229,8 +281,16 @@
       </div>
       <h1>Energy cost &amp; billing dashboard</h1>
       <span class="tagline">Independent I-SEM wholesale cost tracking — transparent pricing behind every tariff decision.</span>
+      <div class="data-note">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        Cost figures use a notional flat-load assumption, not actual customer usage, until real consumption data is connected.
+      </div>
     </div>
     <div class="topbar-actions">
+      <button class="btn" id="tariffBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+        Tariff calculator
+      </button>
       <button class="btn" id="exportBtn">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16"/></svg>
         Export Excel
@@ -289,6 +349,11 @@
 
   <div class="kpis" id="kpis"></div>
 
+  <div class="loading-overlay" id="loadingOverlay" style="display:none">
+    <div class="loading-spinner"></div>
+    <div class="loading-text" id="loadingText">Loading…</div>
+  </div>
+
   <div class="ribbon-card" id="ribbonCard" style="display:none">
     <div class="ribbon-title">Hourly price, low → high</div>
     <div class="ribbon" id="ribbon"></div>
@@ -316,6 +381,25 @@
       <thead><tr><th>Band</th><th>Hours</th><th>Cost (€)</th></tr></thead>
       <tbody id="bandsBody"></tbody>
     </table>
+  </div>
+
+  <div class="tariff-panel" id="tariffPanel" style="display:none">
+    <div class="tariff-panel-header">
+      <h2>Tariff calculator</h2>
+      <button class="icon-btn" id="tariffCloseBtn" aria-label="Close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <p class="tariff-panel-sub">Turns historical wholesale cost into a proposed time-of-use retail tariff, banded into night/day/peak, with your target margin applied on top of actual procurement cost.</p>
+
+    <div class="controls">
+      <label>From <input type="date" id="tariffFrom"></label>
+      <label>To <input type="date" id="tariffTo"></label>
+      <label>Target margin <input type="number" id="tariffMargin" value="20" min="0" max="200" step="1" style="width:70px;"> %</label>
+      <button class="btn btn-primary" id="tariffCalcBtn">Calculate</button>
+    </div>
+
+    <div id="tariffResults"></div>
   </div>
 
   <footer class="app-footer">
@@ -497,11 +581,37 @@ function cssVar(name) { return getComputedStyle(root).getPropertyValue(name).tri
 const VIEW_TO_PERIOD = { daily: "day", weekly: "week", monthly: "month", yearly: "year", custom: "custom" };
 
 /* ---------- Data loading ---------- */
+let wakeTimer = null;
+function showLoading() {
+  document.getElementById("kpis").innerHTML = "";
+  document.getElementById("ribbonCard").style.display = "none";
+  document.getElementById("bandsCard").style.display = "none";
+  document.getElementById("compareCard").style.display = "none";
+  document.getElementById("drillHint").style.display = "none";
+  if (chart) { chart.destroy(); chart = null; }
+  const overlay = document.getElementById("loadingOverlay");
+  const text = document.getElementById("loadingText");
+  text.textContent = "Loading…";
+  overlay.style.display = "flex";
+  // If this is taking more than a couple seconds, it's almost certainly the
+  // free-tier server (or database) waking up from being idle, not a bug —
+  // say so, since a silent multi-second stall reads as broken otherwise.
+  clearTimeout(wakeTimer);
+  wakeTimer = setTimeout(() => {
+    text.textContent = "Waking up the server — this can take up to a minute on the free tier…";
+  }, 2500);
+}
+function hideLoading() {
+  clearTimeout(wakeTimer);
+  document.getElementById("loadingOverlay").style.display = "none";
+}
+
 async function load() {
   const fromStr = fromInput.value, toStr = toInput.value;
   if (!fromStr || !toStr) return;
   document.getElementById("granularityTabs").style.display = fromStr === toStr ? "flex" : "none";
 
+  showLoading();
   try {
     if (fromStr === toStr) {
       const res = await fetch(`${API_BASE}/api/costs/daily?date_=${fromStr}`);
@@ -516,6 +626,7 @@ async function load() {
       if (!res.ok) return renderEmpty(data.detail);
       currentData = { mode: "range", data };
     }
+    hideLoading();
     render();
     await handleCompare(fromStr, toStr);
   } catch (e) {
@@ -533,6 +644,7 @@ setInterval(load, 30 * 60 * 1000);
 
 function renderEmpty(msg) {
   currentData = null;
+  document.getElementById("loadingOverlay").style.display = "none";
   document.getElementById("kpis").innerHTML = `<div class="empty-state" style="grid-column:1/-1">${msg || "No data for this selection."}</div>`;
   document.getElementById("ribbonCard").style.display = "none";
   document.getElementById("bandsCard").style.display = "none";
@@ -834,6 +946,76 @@ document.getElementById("exportBtn").onclick = () => {
     XLSX.writeFile(wb, `walterjr-procurement-cost-${data.start}-to-${data.end}.xlsx`);
   }
 };
+
+/* ---------- Tariff calculator ---------- */
+const tariffPanel = document.getElementById("tariffPanel");
+const tariffFrom = document.getElementById("tariffFrom");
+const tariffTo = document.getElementById("tariffTo");
+
+function defaultTariffRange() {
+  // Defaults to the current calendar month — the most natural starting
+  // point for "what should we charge based on recent actual cost".
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  tariffFrom.value = toISO(start);
+  tariffTo.value = toISO(end);
+}
+
+document.getElementById("tariffBtn").onclick = () => {
+  const opening = tariffPanel.style.display === "none";
+  tariffPanel.style.display = opening ? "block" : "none";
+  if (opening && !tariffFrom.value) defaultTariffRange();
+  if (opening) tariffPanel.scrollIntoView && tariffPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+};
+document.getElementById("tariffCloseBtn").onclick = () => { tariffPanel.style.display = "none"; };
+
+document.getElementById("tariffCalcBtn").onclick = async () => {
+  const start = tariffFrom.value, end = tariffTo.value;
+  const marginInput = document.getElementById("tariffMargin");
+  const margin = parseFloat(marginInput.value);
+  const results = document.getElementById("tariffResults");
+
+  if (!start || !end) { results.innerHTML = `<div class="empty-state">Pick a From and To date.</div>`; return; }
+  if (parseLocal(end) <= parseLocal(start)) { results.innerHTML = `<div class="empty-state">To date must be after From date.</div>`; return; }
+  if (isNaN(margin) || margin < 0) { results.innerHTML = `<div class="empty-state">Margin must be a positive number.</div>`; return; }
+
+  results.innerHTML = `<div class="empty-state">Calculating…</div>`;
+  // API's range end is exclusive, matching the rest of the app's convention —
+  // the tariff endpoint's "end" is a date, and its own backend logic treats
+  // it the same way as the range/monthly endpoints (exclusive upper bound).
+  const apiEndDate = parseLocal(end); apiEndDate.setDate(apiEndDate.getDate() + 1);
+  const apiEnd = toISO(apiEndDate);
+
+  try {
+    const res = await fetch(`${API_BASE}/api/tariff/calculate?start=${start}&end=${apiEnd}&target_margin_pct=${margin}`);
+    const data = await res.json();
+    if (!res.ok) { results.innerHTML = `<div class="empty-state">${data.detail || "No data for this range."}</div>`; return; }
+    renderTariffResults(data);
+  } catch (e) {
+    results.innerHTML = `<div class="empty-state">Could not reach the API — try again.</div>`;
+  }
+};
+
+function renderTariffResults(data) {
+  const results = document.getElementById("tariffResults");
+  const bandsHtml = data.periods.map(p => `
+    <div class="tariff-band-card">
+      <div class="tariff-band-name">${p.name}</div>
+      <div class="tariff-band-hours">${p.hours}</div>
+      <div class="tariff-retail-price">€${p.proposed_retail_price_eur_per_kwh.toFixed(4)}<span style="font-size:12px; color:var(--text-3); font-weight:400;">/kWh</span></div>
+      <div class="tariff-band-row"><span class="label">Wholesale avg</span><span>€${p.avg_wholesale_price_eur_per_mwh}/MWh</span></div>
+      <div class="tariff-band-row"><span class="label">Margin</span><span>+${p.margin_pct}%</span></div>
+    </div>
+  `).join("");
+
+  results.innerHTML = `
+    <div class="tariff-bands">${bandsHtml}</div>
+    <div class="tariff-blended">
+      Based on ${data.based_on} · Blended wholesale price: €${data.blended_wholesale_price_eur_per_mwh}/MWh
+    </div>
+  `;
+}
 
 load();
 </script>
