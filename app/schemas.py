@@ -117,11 +117,17 @@ class TariffPeriod(BaseModel):
     name: str  # e.g. "peak", "day", "night"
     hours: str  # human readable, e.g. "17:00-19:00"
     avg_wholesale_price_eur_per_mwh: float
-    proposed_retail_price_eur_per_kwh: float
     margin_pct: float
+    network_charge_eur_per_kwh: float
+    proposed_retail_price_eur_per_kwh_excl_vat: float
+    proposed_retail_price_eur_per_kwh_incl_vat: float
 
 
 class TariffResponse(BaseModel):
     based_on: str  # e.g. "2026-08 monthly data"
     periods: List[TariffPeriod]
     blended_wholesale_price_eur_per_mwh: float
+    vat_pct: float
+    network_charge_eur_per_kwh: float
+    pso_levy_eur_per_month_excl_vat: float
+    pso_levy_eur_per_month_incl_vat: float

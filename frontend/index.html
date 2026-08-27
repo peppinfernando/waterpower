@@ -211,6 +211,9 @@
   .tariff-panel-sub {
     font-size: 13px; color: var(--text-2); margin: 4px 0 16px; max-width: 62ch;
   }
+  .tariff-panel-note {
+    font-size: 11.5px; color: var(--text-3); margin: 10px 0 0; max-width: 70ch; line-height: 1.5;
+  }
   .tariff-bands {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 14px; margin-top: 18px;
@@ -400,14 +403,20 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
       </button>
     </div>
-    <p class="tariff-panel-sub">Turns historical wholesale cost into a proposed time-of-use retail tariff, banded into night/day/peak, with your target margin applied on top of actual procurement cost.</p>
+    <p class="tariff-panel-sub">Turns historical wholesale cost into a proposed time-of-use retail tariff, banded into night/day/peak, with your target margin applied on top of actual procurement cost — plus the regulated charges an Irish bill actually includes.</p>
 
     <div class="controls">
       <label>From <input type="date" id="tariffFrom"></label>
       <label>To <input type="date" id="tariffTo"></label>
-      <label>Target margin <input type="number" id="tariffMargin" value="20" min="0" max="200" step="1" style="width:70px;"> %</label>
+      <label>Target margin <input type="number" id="tariffMargin" value="20" min="0" max="200" step="1" style="width:60px;"> %</label>
+    </div>
+    <div class="controls" style="margin-top:-8px;">
+      <label>Network charge <input type="number" id="tariffNetwork" value="0" min="0" step="0.001" style="width:70px;"> €/kWh</label>
+      <label>PSO levy <input type="number" id="tariffPso" value="0.51" min="0" step="0.01" style="width:70px;"> €/month</label>
+      <label>VAT <input type="number" id="tariffVat" value="9" min="0" max="100" step="0.1" style="width:60px;"> %</label>
       <button class="btn btn-primary" id="tariffCalcBtn">Calculate</button>
     </div>
+    <p class="tariff-panel-note">Network charge defaults to €0 — the exact current domestic DUoS/TUoS rate depends on connection type and isn't hardcoded here; check ESB Networks' current Statement of Charges and enter the real figure. PSO levy and VAT default to current CRU/Revenue rates but are worth verifying before relying on this for a real pricing decision.</p>
 
     <div id="tariffResults"></div>
   </div>
@@ -1023,13 +1032,18 @@ document.getElementById("tariffCloseBtn").onclick = () => { tariffPanel.style.di
 
 document.getElementById("tariffCalcBtn").onclick = async () => {
   const start = tariffFrom.value, end = tariffTo.value;
-  const marginInput = document.getElementById("tariffMargin");
-  const margin = parseFloat(marginInput.value);
+  const margin = parseFloat(document.getElementById("tariffMargin").value);
+  const networkCharge = parseFloat(document.getElementById("tariffNetwork").value);
+  const psoLevy = parseFloat(document.getElementById("tariffPso").value);
+  const vat = parseFloat(document.getElementById("tariffVat").value);
   const results = document.getElementById("tariffResults");
 
   if (!start || !end) { results.innerHTML = `<div class="empty-state">Pick a From and To date.</div>`; return; }
   if (parseLocal(end) <= parseLocal(start)) { results.innerHTML = `<div class="empty-state">To date must be after From date.</div>`; return; }
   if (isNaN(margin) || margin < 0) { results.innerHTML = `<div class="empty-state">Margin must be a positive number.</div>`; return; }
+  if (isNaN(networkCharge) || networkCharge < 0) { results.innerHTML = `<div class="empty-state">Network charge must be a positive number.</div>`; return; }
+  if (isNaN(psoLevy) || psoLevy < 0) { results.innerHTML = `<div class="empty-state">PSO levy must be a positive number.</div>`; return; }
+  if (isNaN(vat) || vat < 0) { results.innerHTML = `<div class="empty-state">VAT must be a positive number.</div>`; return; }
 
   results.innerHTML = `<div class="empty-state">Calculating…</div>`;
   // API's range end is exclusive, matching the rest of the app's convention —
@@ -1039,7 +1053,11 @@ document.getElementById("tariffCalcBtn").onclick = async () => {
   const apiEnd = toISO(apiEndDate);
 
   try {
-    const res = await fetch(`${API_BASE}/api/tariff/calculate?start=${start}&end=${apiEnd}&target_margin_pct=${margin}`);
+    const params = new URLSearchParams({
+      start, end: apiEnd, target_margin_pct: margin,
+      network_charge_eur_per_kwh: networkCharge, pso_levy_eur_per_month: psoLevy, vat_pct: vat,
+    });
+    const res = await fetch(`${API_BASE}/api/tariff/calculate?${params}`);
     const data = await res.json();
     if (!res.ok) { results.innerHTML = `<div class="empty-state">${data.detail || "No data for this range."}</div>`; return; }
     renderTariffResults(data);
@@ -1054,16 +1072,19 @@ function renderTariffResults(data) {
     <div class="tariff-band-card">
       <div class="tariff-band-name">${p.name}</div>
       <div class="tariff-band-hours">${p.hours}</div>
-      <div class="tariff-retail-price">€${p.proposed_retail_price_eur_per_kwh.toFixed(4)}<span style="font-size:12px; color:var(--text-3); font-weight:400;">/kWh</span></div>
+      <div class="tariff-retail-price">€${p.proposed_retail_price_eur_per_kwh_incl_vat.toFixed(4)}<span style="font-size:12px; color:var(--text-3); font-weight:400;">/kWh incl. VAT</span></div>
+      <div class="tariff-band-row"><span class="label">Excl. VAT</span><span>€${p.proposed_retail_price_eur_per_kwh_excl_vat.toFixed(4)}/kWh</span></div>
       <div class="tariff-band-row"><span class="label">Wholesale avg</span><span>€${p.avg_wholesale_price_eur_per_mwh}/MWh</span></div>
       <div class="tariff-band-row"><span class="label">Margin</span><span>+${p.margin_pct}%</span></div>
+      <div class="tariff-band-row"><span class="label">Network charge</span><span>€${p.network_charge_eur_per_kwh.toFixed(4)}/kWh</span></div>
     </div>
   `).join("");
 
   results.innerHTML = `
     <div class="tariff-bands">${bandsHtml}</div>
     <div class="tariff-blended">
-      Based on ${data.based_on} · Blended wholesale price: €${data.blended_wholesale_price_eur_per_mwh}/MWh
+      Based on ${data.based_on} · Blended wholesale price: €${data.blended_wholesale_price_eur_per_mwh}/MWh · VAT: ${data.vat_pct}%<br>
+      PSO levy: €${data.pso_levy_eur_per_month_excl_vat}/month excl. VAT (€${data.pso_levy_eur_per_month_incl_vat}/month incl. VAT) — charged separately, not part of the per-kWh band prices above
     </div>
   `;
 }
