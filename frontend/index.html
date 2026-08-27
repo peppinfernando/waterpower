@@ -328,6 +328,24 @@
       <button class="tab active" data-granularity="hourly">Hourly</button>
       <button class="tab" data-granularity="raw">30-min</button>
     </div>
+    <div class="tabs" id="weeklyGranularityTabs" style="display:none; margin:0;">
+      <button class="tab active" data-range-granularity="daily">Daily</button>
+      <button class="tab" data-range-granularity="hourly">Hourly</button>
+    </div>
+    <div class="tabs" id="monthlyGranularityTabs" style="display:none; margin:0;">
+      <button class="tab active" data-range-granularity="daily">Daily</button>
+      <button class="tab" data-range-granularity="weekly">Weekly</button>
+    </div>
+    <div class="tabs" id="yearlyGranularityTabs" style="display:none; margin:0;">
+      <button class="tab active" data-range-granularity="monthly">Monthly</button>
+      <button class="tab" data-range-granularity="quarterly">Quarterly</button>
+    </div>
+    <div class="tabs" id="customGranularityTabs" style="display:none; margin:0;">
+      <button class="tab active" data-range-granularity="auto">Auto</button>
+      <button class="tab" data-range-granularity="daily">Daily</button>
+      <button class="tab" data-range-granularity="weekly">Weekly</button>
+      <button class="tab" data-range-granularity="monthly">Monthly</button>
+    </div>
     <span id="lastUpdated" style="font-size:12px; color:var(--text-3); font-family:'IBM Plex Mono',monospace; margin-left:auto;"></span>
   </div>
 
@@ -409,6 +427,7 @@ const API_BASE = ""; // same-origin now that the backend serves this file direct
 let chart;
 let view = "daily";           // which quick-select is active: daily|weekly|monthly|yearly|custom
 let granularity = "hourly";   // "hourly" | "raw" (30-min) — single-day view only
+let rangeGranularity = "daily"; // per-view rollup override for weekly/monthly/yearly/custom (meaning depends on active view — see RANGE_GRANULARITY_DEFAULTS)
 let currentData = null;       // { mode: "day"|"range", data } — last-loaded payload, used for export/drill
 let currentCompare = null;    // last comparison payload, if compare toggle is on
 
@@ -495,10 +514,32 @@ for (let y = thisYear; y >= thisYear - 5; y--) {
   });
 }
 
+const RANGE_GRANULARITY_TABS = { weekly: "weeklyGranularityTabs", monthly: "monthlyGranularityTabs", yearly: "yearlyGranularityTabs", custom: "customGranularityTabs" };
+const RANGE_GRANULARITY_DEFAULTS = { weekly: "daily", monthly: "daily", yearly: "monthly", custom: "auto" };
+
 function showControlGroup(v) {
   Object.values(CONTROL_GROUPS).forEach(id => document.getElementById(id).style.display = "none");
   document.getElementById(CONTROL_GROUPS[v]).style.display = "flex";
+
+  Object.values(RANGE_GRANULARITY_TABS).forEach(id => document.getElementById(id).style.display = "none");
+  if (RANGE_GRANULARITY_TABS[v]) {
+    const groupId = RANGE_GRANULARITY_TABS[v];
+    document.getElementById(groupId).style.display = "flex";
+    rangeGranularity = RANGE_GRANULARITY_DEFAULTS[v];
+    document.querySelectorAll(`#${groupId} .tab`).forEach(b =>
+      b.classList.toggle("active", b.dataset.rangeGranularity === rangeGranularity));
+  }
 }
+
+document.querySelectorAll('.tabs[id$="GranularityTabs"] .tab[data-range-granularity]').forEach(btn => {
+  btn.onclick = () => {
+    const group = btn.closest(".tabs");
+    group.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    rangeGranularity = btn.dataset.rangeGranularity;
+    load();
+  };
+});
 
 function syncSelectorsFromAnchor(v, anchorStr) {
   const anchor = parseLocal(anchorStr);
@@ -613,7 +654,8 @@ async function load() {
     } else {
       const apiEndDate = parseLocal(toStr); apiEndDate.setDate(apiEndDate.getDate() + 1);
       const apiEnd = toISO(apiEndDate); // UI "To" is inclusive; API end is exclusive
-      const res = await fetch(`${API_BASE}/api/costs/range?start=${fromStr}&end=${apiEnd}`);
+      const granularityParam = (view === "custom" && rangeGranularity === "auto") ? "" : `&granularity=${rangeGranularity}`;
+      const res = await fetch(`${API_BASE}/api/costs/range?start=${fromStr}&end=${apiEnd}${granularityParam}`);
       const data = await res.json();
       if (!res.ok) return renderEmpty(data.detail);
       currentData = { mode: "range", data };
@@ -686,22 +728,39 @@ function render() {
     }, text2, border);
 
   } else {
-    document.getElementById("kpis").innerHTML =
-      kpiCard("Total cost", `€${data.total_cost_eur.toFixed(2)}`) +
-      kpiCard("Avg price", `€${data.average_price_eur_per_mwh}/MWh`) +
-      kpiCard("Granularity", data.granularity === "monthly" ? "By month" : "By day");
-
     document.getElementById("ribbonCard").style.display = "none";
     document.getElementById("bandsCard").style.display = "none";
 
+    // Only daily and monthly bars support click-to-drill today — weekly,
+    // quarterly, and hourly-across-days points don't map onto an existing
+    // view/date-picker combination as cleanly, so they're display-only.
     const isDrillable = data.granularity === "daily" || data.granularity === "monthly";
     if (isDrillable) document.getElementById("drillHint").style.display = "block";
 
+    const GRANULARITY_LABELS = {
+      hourly: "By hour", daily: "By day", weekly: "By week",
+      monthly: "By month", quarterly: "By quarter",
+    };
+    const CHART_LABELS = {
+      hourly: "Hourly cost (€)", daily: "Daily cost (€)", weekly: "Weekly cost (€)",
+      monthly: "Monthly cost (€)", quarterly: "Quarterly cost (€)",
+    };
+    document.getElementById("kpis").innerHTML =
+      kpiCard("Total cost", `€${data.total_cost_eur.toFixed(2)}`) +
+      kpiCard("Avg price", `€${data.average_price_eur_per_mwh}/MWh`) +
+      kpiCard("Granularity", GRANULARITY_LABELS[data.granularity] || data.granularity);
+
+    // ISO date labels ("2026-08-20") are shortened to "08-20" for a daily
+    // chart's x-axis; every other granularity's label is already compact
+    // and shown as-is (e.g. "Aug 03", "2026 Q1", "Mon 00:00").
+    const chartLabels = data.points.map(p =>
+      data.granularity === "daily" && /^\d{4}-\d{2}-\d{2}$/.test(p.label) ? p.label.slice(5) : p.label);
+
     renderChart({
       type: "bar",
-      labels: data.points.map(p => data.granularity === "monthly" ? p.label : p.label.slice(5)),
+      labels: chartLabels,
       datasets: [{
-        label: data.granularity === "monthly" ? "Monthly cost (€)" : "Daily cost (€)",
+        label: CHART_LABELS[data.granularity] || "Cost (€)",
         data: data.points.map(p => p.cost_eur),
         backgroundColor: teal,
         borderRadius: 4,

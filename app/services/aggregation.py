@@ -244,47 +244,129 @@ def get_yearly_costs_by_month(db: Session, year: int) -> List[dict]:
     return result
 
 
-def get_range_costs_auto(db: Session, start_day: date, end_day: date) -> dict:
+def get_range_costs_by_week(db: Session, start_day: date, end_day: date) -> List[dict]:
+    """Buckets a date range into ISO weeks (Mon-Sun). Partial weeks at
+    either edge of the range are included as-is with whatever days fall
+    inside — e.g. a month rarely starts/ends on a Monday, so the first
+    and last buckets are often short weeks rather than dropped entirely."""
+    days = get_range_costs_by_day(db, start_day, end_day)
+    by_week: dict[date, dict] = {}
+    for d in days:
+        monday = d["date"] - timedelta(days=d["date"].weekday())
+        bucket = by_week.setdefault(monday, {"cost_eur": 0.0, "volume_mwh": 0.0})
+        bucket["cost_eur"] += d["cost_eur"]
+        bucket["volume_mwh"] += d["volume_mwh"]
+
+    result = []
+    for monday in sorted(by_week):
+        b = by_week[monday]
+        avg_price = b["cost_eur"] / b["volume_mwh"] if b["volume_mwh"] else 0
+        result.append({
+            "label": monday.strftime("%b %d"),
+            "cost_eur": round(b["cost_eur"], 2),
+            "volume_mwh": round(b["volume_mwh"], 3),
+            "average_price_eur_per_mwh": round(avg_price, 2),
+        })
+    return result
+
+
+def get_range_costs_by_quarter(db: Session, start_day: date, end_day: date) -> List[dict]:
+    """Buckets a date range into calendar quarters (Q1=Jan-Mar, etc) —
+    the coarsest rollup on offer, mainly useful for the Yearly view when
+    even 12 monthly bars feels like more detail than needed."""
+    days = get_range_costs_by_day(db, start_day, end_day)
+    by_quarter: dict[tuple, dict] = {}
+    for d in days:
+        q = (d["date"].year, (d["date"].month - 1) // 3 + 1)
+        bucket = by_quarter.setdefault(q, {"cost_eur": 0.0, "volume_mwh": 0.0})
+        bucket["cost_eur"] += d["cost_eur"]
+        bucket["volume_mwh"] += d["volume_mwh"]
+
+    result = []
+    for (year, q) in sorted(by_quarter):
+        b = by_quarter[(year, q)]
+        avg_price = b["cost_eur"] / b["volume_mwh"] if b["volume_mwh"] else 0
+        result.append({
+            "label": f"{year} Q{q}",
+            "cost_eur": round(b["cost_eur"], 2),
+            "volume_mwh": round(b["volume_mwh"], 3),
+            "average_price_eur_per_mwh": round(avg_price, 2),
+        })
+    return result
+
+
+def get_hourly_costs_for_range(db: Session, start_day: date, end_day: date) -> List[dict]:
+    """Hourly points across a multi-day range, by concatenating each day's
+    hourly rollup. Intended for short ranges (a week, at most) where
+    someone explicitly wants more detail than daily bars — 7 days is
+    already 168 points, so this isn't offered for longer ranges."""
+    points = []
+    day_cursor = start_day
+    while day_cursor < end_day:
+        hourly = get_daily_costs_hourly(db, day_cursor)
+        weekday = day_cursor.strftime("%a")
+        for h in hourly:
+            points.append({
+                "label": f"{weekday} {h['hour_label']}",
+                "cost_eur": h["cost_eur"],
+                "volume_mwh": h["volume_mwh"],
+                "average_price_eur_per_mwh": h["price_eur_per_mwh"],
+            })
+        day_cursor += timedelta(days=1)
+    return points
+
+
+def get_range_costs_auto(db: Session, start_day: date, end_day: date, granularity: Optional[str] = None) -> dict:
     """Generic custom-range rollup for the free From/To picker. Picks a
     granularity automatically based on the span so a 3-day range isn't
     crammed into 3 bars and a 400-day range isn't 400 daily bars:
       - up to 1 day  -> hourly (reuses the daily hourly rollup)
       - up to ~13 weeks (92 days) -> daily rollup
       - longer -> monthly rollup
+
+    Pass an explicit `granularity` ("hourly", "daily", "weekly", "monthly",
+    or "quarterly") to override the automatic choice — used by the
+    per-view granularity toggles (e.g. Monthly view's Daily/Weekly switch)
+    rather than the free-form custom-range picker.
     """
+    def _points(fn_result, key_fn=None):
+        return [{"label": r.get("label") or key_fn(r), "cost_eur": r["cost_eur"],
+                 "volume_mwh": r["volume_mwh"], "average_price_eur_per_mwh": r["average_price_eur_per_mwh"]}
+                for r in fn_result]
+
+    if granularity == "hourly":
+        return {"granularity": "hourly", "points": get_hourly_costs_for_range(db, start_day, end_day)}
+    if granularity == "daily":
+        days = get_range_costs_by_day(db, start_day, end_day)
+        return {"granularity": "daily", "points": _points(days, lambda d: d["date"].isoformat())}
+    if granularity == "weekly":
+        return {"granularity": "weekly", "points": get_range_costs_by_week(db, start_day, end_day)}
+    if granularity == "monthly":
+        days = get_range_costs_by_day(db, start_day, end_day)
+        by_month: dict[str, dict] = {}
+        for d in days:
+            key = d["date"].strftime("%Y-%m")
+            bucket = by_month.setdefault(key, {"cost_eur": 0.0, "volume_mwh": 0.0})
+            bucket["cost_eur"] += d["cost_eur"]
+            bucket["volume_mwh"] += d["volume_mwh"]
+        points = []
+        for key in sorted(by_month):
+            b = by_month[key]
+            avg_price = b["cost_eur"] / b["volume_mwh"] if b["volume_mwh"] else 0
+            points.append({"label": key, "cost_eur": round(b["cost_eur"], 2),
+                            "volume_mwh": round(b["volume_mwh"], 3),
+                            "average_price_eur_per_mwh": round(avg_price, 2)})
+        return {"granularity": "monthly", "points": points}
+    if granularity == "quarterly":
+        return {"granularity": "quarterly", "points": get_range_costs_by_quarter(db, start_day, end_day)}
+
+    # No explicit granularity requested — auto-pick from span, as before.
     span_days = (end_day - start_day).days
     if span_days <= 1:
-        hourly = get_daily_costs_hourly(db, start_day)
-        return {
-            "granularity": "hourly",
-            "points": [{"label": h["hour_label"], "cost_eur": h["cost_eur"],
-                        "volume_mwh": h["volume_mwh"], "average_price_eur_per_mwh": h["price_eur_per_mwh"]}
-                       for h in hourly],
-        }
+        return get_range_costs_auto(db, start_day, end_day, granularity="hourly")
     if span_days <= 92:
-        days = get_range_costs_by_day(db, start_day, end_day)
-        return {
-            "granularity": "daily",
-            "points": [{"label": d["date"].isoformat(), "cost_eur": d["cost_eur"],
-                        "volume_mwh": d["volume_mwh"], "average_price_eur_per_mwh": d["average_price_eur_per_mwh"]}
-                       for d in days],
-        }
-
-    days = get_range_costs_by_day(db, start_day, end_day)
-    by_month: dict[str, dict] = {}
-    for d in days:
-        key = d["date"].strftime("%Y-%m")
-        bucket = by_month.setdefault(key, {"cost_eur": 0.0, "volume_mwh": 0.0})
-        bucket["cost_eur"] += d["cost_eur"]
-        bucket["volume_mwh"] += d["volume_mwh"]
-    points = []
-    for key in sorted(by_month):
-        b = by_month[key]
-        avg_price = b["cost_eur"] / b["volume_mwh"] if b["volume_mwh"] else 0
-        points.append({"label": key, "cost_eur": round(b["cost_eur"], 2),
-                        "volume_mwh": round(b["volume_mwh"], 3),
-                        "average_price_eur_per_mwh": round(avg_price, 2)})
-    return {"granularity": "monthly", "points": points}
+        return get_range_costs_auto(db, start_day, end_day, granularity="daily")
+    return get_range_costs_auto(db, start_day, end_day, granularity="monthly")
 
 
 def _period_bounds(period: str, anchor: date, year_offset: int, custom_end: Optional[date] = None) -> tuple[date, date, str]:

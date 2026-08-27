@@ -102,16 +102,23 @@ def yearly(year: int, response: Response, db: Session = Depends(get_db)):
 
 
 @router.get("/range", response_model=schemas.RangeCostResponse)
-def range_(start: date, end: date, response: Response, db: Session = Depends(get_db)):
+def range_(start: date, end: date, response: Response, granularity: Optional[str] = None, db: Session = Depends(get_db)):
     """Free-form From/To range for the custom date picker. Granularity is
     picked automatically based on the span (see get_range_costs_auto):
     a 1-day range returns hourly points, a multi-week/month range returns
     daily points, and anything longer than ~13 weeks rolls up to monthly —
-    so a year-long custom range doesn't render as 365 illegible bars."""
+    so a year-long custom range doesn't render as 365 illegible bars.
+    Pass `granularity` explicitly (hourly/daily/weekly/monthly/quarterly)
+    to override the automatic choice, e.g. for the per-view granularity
+    toggles (Monthly's Daily/Weekly switch, Yearly's Monthly/Quarterly
+    switch, and so on)."""
     if end <= start:
         raise HTTPException(400, "end must be after start")
+    valid_granularities = {None, "hourly", "daily", "weekly", "monthly", "quarterly"}
+    if granularity not in valid_granularities:
+        raise HTTPException(400, f"granularity must be one of: hourly, daily, weekly, monthly, quarterly")
 
-    result = aggregation.get_range_costs_auto(db, start, end)
+    result = aggregation.get_range_costs_auto(db, start, end, granularity=granularity)
     if not result["points"]:
         raise HTTPException(404, f"No data for {start} to {end}")
 
