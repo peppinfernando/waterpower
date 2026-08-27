@@ -170,6 +170,8 @@
   }
   .controls .tabs { padding: 3px; }
   .controls .tab { padding: 6px 12px; font-size: 13px; }
+  .granularity-group { display: flex; align-items: center; gap: 8px; }
+  .control-label { font-size: 13px; color: var(--text-2); }
   .controls label {
     font-size: 13px; color: var(--text-2); display: flex; align-items: center; gap: 8px;
   }
@@ -372,6 +374,7 @@
 
   <div class="controls" id="dailyControls">
     <label>Date <input type="date" id="dailyDate"></label>
+    <button class="btn btn-primary" id="loadBtn">Load</button>
   </div>
   <div class="controls" id="weeklyControls" style="display:none">
     <label>Any date in the week <input type="date" id="weeklyDate"></label>
@@ -389,28 +392,42 @@
   </div>
 
   <div class="controls">
-    <button class="btn btn-primary" id="loadBtn">Load</button>
-    <div class="tabs" id="granularityTabs" style="display:none; margin:0;">
-      <button class="tab active" data-granularity="hourly">Hourly</button>
-      <button class="tab" data-granularity="raw">30-min</button>
+    <div class="granularity-group" id="granularityGroup" style="display:none;">
+      <span class="control-label">Granularity</span>
+      <div class="tabs" id="granularityTabs" style="margin:0;">
+        <button class="tab active" data-granularity="hourly">Hourly</button>
+        <button class="tab" data-granularity="raw">30-min</button>
+      </div>
     </div>
-    <div class="tabs" id="weeklyGranularityTabs" style="display:none; margin:0;">
-      <button class="tab active" data-range-granularity="daily">Daily</button>
-      <button class="tab" data-range-granularity="hourly">Hourly</button>
+    <div class="granularity-group" id="weeklyGranularityGroup" style="display:none;">
+      <span class="control-label">Granularity</span>
+      <div class="tabs" id="weeklyGranularityTabs" style="margin:0;">
+        <button class="tab active" data-range-granularity="daily">Daily</button>
+        <button class="tab" data-range-granularity="hourly">Hourly</button>
+      </div>
     </div>
-    <div class="tabs" id="monthlyGranularityTabs" style="display:none; margin:0;">
-      <button class="tab active" data-range-granularity="daily">Daily</button>
-      <button class="tab" data-range-granularity="weekly">Weekly</button>
+    <div class="granularity-group" id="monthlyGranularityGroup" style="display:none;">
+      <span class="control-label">Granularity</span>
+      <div class="tabs" id="monthlyGranularityTabs" style="margin:0;">
+        <button class="tab active" data-range-granularity="daily">Daily</button>
+        <button class="tab" data-range-granularity="weekly">Weekly</button>
+      </div>
     </div>
-    <div class="tabs" id="yearlyGranularityTabs" style="display:none; margin:0;">
-      <button class="tab active" data-range-granularity="monthly">Monthly</button>
-      <button class="tab" data-range-granularity="quarterly">Quarterly</button>
+    <div class="granularity-group" id="yearlyGranularityGroup" style="display:none;">
+      <span class="control-label">Granularity</span>
+      <div class="tabs" id="yearlyGranularityTabs" style="margin:0;">
+        <button class="tab active" data-range-granularity="monthly">Monthly</button>
+        <button class="tab" data-range-granularity="quarterly">Quarterly</button>
+      </div>
     </div>
-    <div class="tabs" id="customGranularityTabs" style="display:none; margin:0;">
-      <button class="tab active" data-range-granularity="auto">Auto</button>
-      <button class="tab" data-range-granularity="daily">Daily</button>
-      <button class="tab" data-range-granularity="weekly">Weekly</button>
-      <button class="tab" data-range-granularity="monthly">Monthly</button>
+    <div class="granularity-group" id="customGranularityGroup" style="display:none;">
+      <span class="control-label">Granularity</span>
+      <div class="tabs" id="customGranularityTabs" style="margin:0;">
+        <button class="tab active" data-range-granularity="auto">Auto</button>
+        <button class="tab" data-range-granularity="daily">Daily</button>
+        <button class="tab" data-range-granularity="weekly">Weekly</button>
+        <button class="tab" data-range-granularity="monthly">Monthly</button>
+      </div>
     </div>
     <span id="lastUpdated" style="font-size:12px; color:var(--text-3); font-family:'IBM Plex Mono',monospace; margin-left:auto;"></span>
   </div>
@@ -625,19 +642,25 @@ for (let y = thisYear; y >= thisYear - 5; y--) {
   });
 }
 
+const RANGE_GRANULARITY_GROUPS = { weekly: "weeklyGranularityGroup", monthly: "monthlyGranularityGroup", yearly: "yearlyGranularityGroup", custom: "customGranularityGroup" };
 const RANGE_GRANULARITY_TABS = { weekly: "weeklyGranularityTabs", monthly: "monthlyGranularityTabs", yearly: "yearlyGranularityTabs", custom: "customGranularityTabs" };
 const RANGE_GRANULARITY_DEFAULTS = { weekly: "daily", monthly: "daily", yearly: "monthly", custom: "auto" };
 
 function showControlGroup(v) {
   Object.values(CONTROL_GROUPS).forEach(id => document.getElementById(id).style.display = "none");
   document.getElementById(CONTROL_GROUPS[v]).style.display = "flex";
+  // Load lives with whichever date/period picker is currently active,
+  // rather than in a separate row disconnected from the field it acts
+  // on — appendChild moves the existing button (and its click handler)
+  // rather than cloning it, so there's still only one #loadBtn in the DOM.
+  document.getElementById(CONTROL_GROUPS[v]).appendChild(document.getElementById("loadBtn"));
 
-  Object.values(RANGE_GRANULARITY_TABS).forEach(id => document.getElementById(id).style.display = "none");
-  if (RANGE_GRANULARITY_TABS[v]) {
-    const groupId = RANGE_GRANULARITY_TABS[v];
-    document.getElementById(groupId).style.display = "flex";
+  Object.values(RANGE_GRANULARITY_GROUPS).forEach(id => document.getElementById(id).style.display = "none");
+  if (RANGE_GRANULARITY_GROUPS[v]) {
+    document.getElementById(RANGE_GRANULARITY_GROUPS[v]).style.display = "flex";
+    const tabsId = RANGE_GRANULARITY_TABS[v];
     rangeGranularity = RANGE_GRANULARITY_DEFAULTS[v];
-    document.querySelectorAll(`#${groupId} .tab`).forEach(b =>
+    document.querySelectorAll(`#${tabsId} .tab`).forEach(b =>
       b.classList.toggle("active", b.dataset.rangeGranularity === rangeGranularity));
   }
 }
@@ -753,7 +776,7 @@ function hideLoading() {
 async function load() {
   const fromStr = fromInput.value, toStr = toInput.value;
   if (!fromStr || !toStr) return;
-  document.getElementById("granularityTabs").style.display = fromStr === toStr ? "flex" : "none";
+  document.getElementById("granularityGroup").style.display = fromStr === toStr ? "flex" : "none";
 
   showLoading();
   try {
