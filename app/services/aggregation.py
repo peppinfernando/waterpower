@@ -296,23 +296,47 @@ def get_range_costs_by_quarter(db: Session, start_day: date, end_day: date) -> L
 
 
 def get_hourly_costs_for_range(db: Session, start_day: date, end_day: date) -> List[dict]:
-    """Hourly points across a multi-day range, by concatenating each day's
-    hourly rollup. Intended for short ranges (a week, at most) where
-    someone explicitly wants more detail than daily bars — 7 days is
-    already 168 points, so this isn't offered for longer ranges."""
+    """Hourly points across a multi-day range (e.g. Weekly view's Hourly
+    toggle: 7 days x 24 hours = 168 points). Intended for short ranges —
+    at most a week — where someone explicitly wants more detail than
+    daily bars.
+
+    This does ONE rebuild_cost_records call and ONE fetch for the whole
+    range, then groups by (day, hour) in Python — mirroring how
+    get_range_costs_by_day/_week/_quarter already work. An earlier version
+    of this function looped per-day, calling the single-day helper 7 times;
+    each call paid its own rebuild + fetch overhead (3 queries even in the
+    best case), so a week cost ~21 queries instead of the ~3 every other
+    granularity gets. Same output, same caching behavior, far fewer
+    round-trips to a remote database.
+    """
+    start = datetime.combine(start_day, datetime.min.time())
+    end = datetime.combine(end_day, datetime.min.time())
+    rebuild_cost_records(db, start, end)
+
+    records = db.scalars(
+        select(CostRecord)
+        .where(CostRecord.interval_start >= start, CostRecord.interval_start < end)
+        .order_by(CostRecord.interval_start)
+    ).all()
+
+    by_day_hour: dict[tuple, dict] = {}
+    for r in records:
+        key = (r.interval_start.date(), r.interval_start.hour)
+        bucket = by_day_hour.setdefault(key, {"cost_eur": 0.0, "volume_mwh": 0.0})
+        bucket["cost_eur"] += r.cost_eur
+        bucket["volume_mwh"] += r.volume_mwh
+
     points = []
-    day_cursor = start_day
-    while day_cursor < end_day:
-        hourly = get_daily_costs_hourly(db, day_cursor)
-        weekday = day_cursor.strftime("%a")
-        for h in hourly:
-            points.append({
-                "label": f"{weekday} {h['hour_label']}",
-                "cost_eur": h["cost_eur"],
-                "volume_mwh": h["volume_mwh"],
-                "average_price_eur_per_mwh": h["price_eur_per_mwh"],
-            })
-        day_cursor += timedelta(days=1)
+    for (day, hour) in sorted(by_day_hour):
+        b = by_day_hour[(day, hour)]
+        avg_price = b["cost_eur"] / b["volume_mwh"] if b["volume_mwh"] else 0
+        points.append({
+            "label": f"{day.strftime('%a')} {hour:02d}:00",
+            "cost_eur": round(b["cost_eur"], 2),
+            "volume_mwh": round(b["volume_mwh"], 3),
+            "average_price_eur_per_mwh": round(avg_price, 2),
+        })
     return points
 
 
