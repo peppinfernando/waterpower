@@ -57,21 +57,27 @@
      the disclaimer badge shown alongside it (#brandPreviewBadge) and the
      footer, which deliberately makes no claims about Waterpower even
      while this is active. */
+  /* Waterpower brand preview — toggled via #brandPreviewBtn, not the
+     default. Colors here are approximated directly from their actual
+     logo file (bright cyan-blue "water" + teal-green "power"), not a
+     guess — see the disclaimer badge (#brandPreviewBadge) and the
+     footer, which deliberately makes no claims about Waterpower even
+     while this is active. */
   html[data-brand="waterpower"] {
-    --bg: #F4F7F6;
+    --bg: #F4F9FB;
     --surface: #FFFFFF;
-    --surface-2: #EAF1EF;
-    --border: #D8E3E0;
+    --surface-2: #E8F6F3;
+    --border: #D3E9E5;
     --text: #10262A;
     --text-2: #56706E;
     --text-3: #87A09E;
-    --navy: #0B4F6C;
-    --navy-2: #146A8C;
-    --teal: #2E8B57;
-    --teal-2: #DCEFE2;
+    --navy: #2BA8DE;
+    --navy-2: #4FBCEA;
+    --teal: #16A190;
+    --teal-2: #DFF5F1;
     --copper: #D98A2B;
     --copper-2: #FBE9CE;
-    --shadow: 0 1px 2px rgba(11,79,108,0.07), 0 8px 24px rgba(11,79,108,0.06);
+    --shadow: 0 1px 2px rgba(43,168,222,0.08), 0 8px 24px rgba(43,168,222,0.07);
   }
   html[data-brand="waterpower"][data-theme="dark"] {
     --bg: #0A1618;
@@ -81,10 +87,10 @@
     --text: #E7F1EE;
     --text-2: #8FB0AB;
     --text-3: #5E837E;
-    --navy: #6FB8DC;
-    --navy-2: #9CD2EC;
-    --teal: #4FBE85;
-    --teal-2: #163828;
+    --navy: #5CC3EE;
+    --navy-2: #7DD1F2;
+    --teal: #3FCBB0;
+    --teal-2: #123A32;
     --copper: #E58A50;
     --copper-2: #3A2618;
   }
@@ -327,8 +333,9 @@
   <div class="topbar">
     <div>
       <div class="brand-row">
-        <svg class="brand-logo" id="brandLogo" viewBox="0 0 32 32" fill="none"><path d="M18 2L6 18h8l-2 12 14-18h-9l1-10z" fill="var(--navy)"/><path d="M18 2L6 18h8l-2 12 14-18h-9l1-10z" fill="var(--teal)" opacity="0.5" transform="translate(2,3) scale(0.7)"/></svg>
+        <svg class="brand-logo" id="brandLogoWalterjr" viewBox="0 0 32 32" fill="none"><path d="M18 2L6 18h8l-2 12 14-18h-9l1-10z" fill="var(--navy)"/><path d="M18 2L6 18h8l-2 12 14-18h-9l1-10z" fill="var(--teal)" opacity="0.5" transform="translate(2,3) scale(0.7)"/></svg>
         <span class="brand-word" id="brandWord">WalterJr Tech Solutions</span>
+        <img src="waterpower-logo.png" alt="Waterpower" id="brandLogoWaterpower" style="display:none; height:26px;">
       </div>
       <h1>Energy cost &amp; billing dashboard</h1>
       <span class="tagline" id="brandTagline">Independent I-SEM wholesale cost tracking — transparent pricing behind every tariff decision.</span>
@@ -528,24 +535,27 @@ applyTheme(safeGetItem("theme") || (matchMedia("(prefers-color-scheme: dark)").m
    mid-preview can't be mistaken for an actual claim of partnership. Not
    persisted across reloads — starting each session on the real WalterJr
    identity is the safer default. */
-const BRAND_LOGOS = {
-  walterjr: '<path d="M18 2L6 18h8l-2 12 14-18h-9l1-10z" fill="var(--navy)"/><path d="M18 2L6 18h8l-2 12 14-18h-9l1-10z" fill="var(--teal)" opacity="0.5" transform="translate(2,3) scale(0.7)"/>',
-  waterpower: '<path d="M16 3C10 11 6 16.5 6 21a10 10 0 0020 0c0-4.5-4-10-10-18z" fill="var(--navy)"/><path d="M16 3C10 11 6 16.5 6 21a10 10 0 0020 0c0-4.5-4-10-10-18z" fill="var(--teal)" opacity="0.55" transform="translate(2,4) scale(0.72)"/>',
-};
-const BRAND_TEXT = {
-  walterjr: { word: "WalterJr Tech Solutions", tagline: "Independent I-SEM wholesale cost tracking — transparent pricing behind every tariff decision." },
-  waterpower: { word: "Waterpower", tagline: "Renewable energy — transparent wholesale pricing behind every tariff decision." },
-};
 let brandPreview = false;
 function applyBrand(brand) {
-  if (brand === "waterpower") root.setAttribute("data-brand", "waterpower");
+  const isWaterpower = brand === "waterpower";
+  if (isWaterpower) root.setAttribute("data-brand", "waterpower");
   else root.removeAttribute("data-brand");
-  document.getElementById("brandLogo").innerHTML = BRAND_LOGOS[brand];
-  document.getElementById("brandWord").textContent = BRAND_TEXT[brand].word;
-  document.getElementById("brandTagline").textContent = BRAND_TEXT[brand].tagline;
-  document.getElementById("brandPreviewBadge").style.display = brand === "waterpower" ? "flex" : "none";
+
+  // Waterpower's real logo is a single wide image with the wordmark and
+  // their own tagline baked in — swapping visibility between that and the
+  // WalterJr icon+text combo is cleaner than trying to mutate one element
+  // into two very differently-shaped things.
+  document.getElementById("brandLogoWalterjr").style.display = isWaterpower ? "none" : "block";
+  document.getElementById("brandWord").style.display = isWaterpower ? "none" : "inline";
+  document.getElementById("brandLogoWaterpower").style.display = isWaterpower ? "block" : "none";
+  // Their logo already carries its own tagline ("electricity, start
+  // saving today!"), so showing our separate one underneath would be
+  // redundant clutter — hide ours only while the real logo is visible.
+  document.getElementById("brandTagline").style.display = isWaterpower ? "none" : "block";
+
+  document.getElementById("brandPreviewBadge").style.display = isWaterpower ? "flex" : "none";
   const btn = document.getElementById("brandPreviewBtn");
-  btn.innerHTML = brand === "waterpower"
+  btn.innerHTML = isWaterpower
     ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg> Exit preview'
     : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview: Waterpower';
   if (currentData) render(); // repaint chart colors for the new palette
