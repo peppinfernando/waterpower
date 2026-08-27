@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — Waterpower Energy Cost Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F4F7F6; --surface: #FFFFFF; --border: #D8E3E0;
+    --text: #10262A; --text-2: #56706E;
+    --navy: #0B4F6C; --teal: #2E8B57;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: var(--bg); font-family: 'Inter', -apple-system, sans-serif; color: var(--text);
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 36px 32px; width: 100%; max-width: 360px;
+    box-shadow: 0 1px 2px rgba(11,79,108,0.07), 0 8px 24px rgba(11,79,108,0.06);
+  }
+  .brand-row { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
+  .brand-logo { width: 24px; height: 24px; flex-shrink: 0; }
+  .brand-word { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 17px; color: var(--navy); }
+  h1 { font-family: 'Space Grotesk', sans-serif; font-size: 19px; font-weight: 600; margin: 0 0 6px; }
+  p.sub { color: var(--text-2); font-size: 13px; margin: 0 0 24px; }
+  label { display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px; margin-top: 16px; }
+  input {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 14px; font-family: inherit; color: var(--text); background: var(--bg);
+  }
+  input:focus { outline: 2px solid var(--teal); outline-offset: 1px; }
+  button {
+    width: 100%; margin-top: 22px; padding: 11px; border: none; border-radius: 8px;
+    background: var(--navy); color: white; font-size: 14px; font-weight: 600;
+    font-family: inherit; cursor: pointer;
+  }
+  button:hover { opacity: 0.9; }
+  .error {
+    background: #FBE9CE; color: #8A4B0C; font-size: 13px; padding: 10px 12px;
+    border-radius: 8px; margin-top: 16px; display: none;
+  }
+  .error.show { display: block; }
+</style>
+</head>
+<body>
+  <form class="card" method="POST" action="/login" id="loginForm">
+    <div class="brand-row">
+      <svg class="brand-logo" viewBox="0 0 32 32" fill="none"><path d="M16 3C10 11 6 16.5 6 21a10 10 0 0020 0c0-4.5-4-10-10-18z" fill="#0B4F6C"/><path d="M16 3C10 11 6 16.5 6 21a10 10 0 0020 0c0-4.5-4-10-10-18z" fill="#2E8B57" opacity="0.55" transform="translate(2,4) scale(0.72)"/></svg>
+      <span class="brand-word">Waterpower</span>
+    </div>
+    <h1>Energy cost dashboard</h1>
+    <p class="sub">Sign in to view procurement cost data.</p>
+
+    <label for="username">Username</label>
+    <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" autocomplete="current-password" required>
+
+    <div class="error" id="errorMsg">Incorrect username or password.</div>
+
+    <button type="submit">Sign in</button>
+  </form>
+
+<script>
+  // Show an error banner if we were redirected back here after a failed attempt.
+  if (new URLSearchParams(location.search).get("error")) {
+    document.getElementById("errorMsg").classList.add("show");
+  }
+</script>
+</body>
+</html>

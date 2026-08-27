@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Procurement Cost Tracker — I-SEM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<style>
+  :root {
+    /* Waterpower brand palette — starting point derived from their
+       positioning (hydro/renewable, Irish, savings-focused). Swap these
+       for exact brand hex values once we have their logo/style guide or
+       a screenshot of the live site to match precisely. */
+    --bg: #F4F7F6;
+    --surface: #FFFFFF;
+    --surface-2: #EAF1EF;
+    --border: #D8E3E0;
+    --text: #10262A;
+    --text-2: #56706E;
+    --text-3: #87A09E;
+    --navy: #0B4F6C;       /* Waterpower blue — hydro/water */
+    --navy-2: #146A8C;
+    --teal: #2E8B57;       /* renewable green */
+    --teal-2: #DCEFE2;
+    --copper: #D98A2B;     /* savings/cost-highlight amber */
+    --copper-2: #FBE9CE;
+    --shadow: 0 1px 2px rgba(11,79,108,0.07), 0 8px 24px rgba(11,79,108,0.06);
+    --radius: 12px;
+  }
+  html[data-theme="dark"] {
+    --bg: #0A1618;
+    --surface: #12201F;
+    --surface-2: #172A28;
+    --border: #24403C;
+    --text: #E7F1EE;
+    --text-2: #8FB0AB;
+    --text-3: #5E837E;
+    --navy: #6FB8DC;
+    --navy-2: #9CD2EC;
+    --teal: #4FBE85;
+    --teal-2: #163828;
+    --copper: #E58A50;
+    --copper-2: #3A2618;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 12px 32px rgba(0,0,0,0.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+  .app { max-width: 1120px; margin: 0 auto; padding: 24px 20px 64px; }
+
+  /* ---- Top bar ---- */
+  .topbar {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 28px;
+  }
+  .brand-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .brand-logo { width: 22px; height: 22px; flex-shrink: 0; }
+  .brand-word {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15px;
+    letter-spacing: -0.01em; color: var(--navy);
+  }
+  .tagline {
+    display: block; font-size: 13px; color: var(--text-2); margin-top: 6px; max-width: 46ch;
+  }
+  h1 {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 600;
+    font-size: clamp(22px, 3.4vw, 30px); margin: 0; letter-spacing: -0.01em;
+  }
+  .topbar-actions { display: flex; gap: 10px; align-items: center; }
+
+  button {
+    font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 500;
+    border-radius: 8px; cursor: pointer; transition: all 0.15s ease;
+  }
+  button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+  .btn {
+    padding: 9px 16px; border: 1px solid var(--border); background: var(--surface);
+    color: var(--text); display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn:hover { border-color: var(--text-3); }
+  .btn-primary { background: var(--navy); color: var(--bg); border-color: var(--navy); }
+  html[data-theme="dark"] .btn-primary { color: #0C1418; }
+  .btn-primary:hover { opacity: 0.88; }
+  .icon-btn {
+    width: 38px; height: 38px; padding: 0; border: 1px solid var(--border);
+    background: var(--surface); display: flex; align-items: center; justify-content: center;
+  }
+  .icon-btn:hover { border-color: var(--text-3); }
+  .icon-btn svg { width: 18px; height: 18px; stroke: var(--text-2); }
+
+  /* ---- Tabs ---- */
+  .tabs {
+    display: flex; gap: 4px; background: var(--surface-2); padding: 4px;
+    border-radius: 10px; width: fit-content; margin-bottom: 18px;
+    overflow-x: auto; max-width: 100%;
+  }
+  .tab {
+    padding: 8px 18px; border: none; background: transparent; color: var(--text-2);
+    border-radius: 7px; white-space: nowrap; font-weight: 500;
+  }
+  .tab.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+  /* ---- Controls ---- */
+  .controls {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 24px;
+  }
+  .controls .tabs { padding: 3px; }
+  .controls .tab { padding: 6px 12px; font-size: 13px; }
+  .controls label {
+    font-size: 13px; color: var(--text-2); display: flex; align-items: center; gap: 8px;
+  }
+  input[type="date"], select {
+    font-family: 'IBM Plex Mono', monospace; font-size: 13px; padding: 8px 10px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text);
+  }
+
+  /* ---- KPI cards ---- */
+  .kpis {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px; margin-bottom: 22px;
+  }
+  .kpi {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 18px; box-shadow: var(--shadow);
+  }
+  .kpi-label { font-size: 12px; color: var(--text-2); margin-bottom: 6px; }
+  .kpi-value {
+    font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi-peak .kpi-value { color: var(--copper); }
+  .kpi-offpeak .kpi-value { color: var(--teal); }
+
+  /* ---- Price ribbon (signature element) ---- */
+  .ribbon-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 18px 14px; margin-bottom: 22px; box-shadow: var(--shadow);
+  }
+  .ribbon-title { font-size: 12px; color: var(--text-2); margin-bottom: 12px; }
+  .ribbon { display: flex; gap: 3px; height: 56px; }
+  .ribbon-cell {
+    flex: 1; border-radius: 4px; position: relative; cursor: default;
+    transition: transform 0.1s ease;
+  }
+  .ribbon-cell:hover { transform: scaleY(1.06); }
+  .ribbon-labels {
+    display: flex; justify-content: space-between; margin-top: 8px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-3);
+  }
+  .ribbon-tooltip {
+    position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+    background: var(--navy); color: var(--bg); font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; padding: 4px 8px; border-radius: 6px; white-space: nowrap;
+    opacity: 0; pointer-events: none; transition: opacity 0.1s ease; z-index: 5;
+  }
+  html[data-theme="dark"] .ribbon-tooltip { color: #0C1418; }
+  .ribbon-cell:hover .ribbon-tooltip { opacity: 1; }
+
+  /* ---- Chart card ---- */
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px; margin-bottom: 22px; box-shadow: var(--shadow);
+  }
+  canvas { max-height: 340px; }
+
+  /* ---- Bands table ---- */
+  .table-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px; box-shadow: var(--shadow); overflow-x: auto;
+  }
+  .table-card h2 {
+    font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 600;
+    margin: 0 0 12px;
+  }
+  table { width: 100%; border-collapse: collapse; min-width: 380px; }
+  th {
+    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-3); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--border);
+  }
+  th:not(:first-child), td:not(:first-child) { text-align: right; }
+  td {
+    padding: 9px 10px; font-family: 'IBM Plex Mono', monospace; font-size: 13px;
+    border-bottom: 1px solid var(--surface-2); font-variant-numeric: tabular-nums;
+  }
+  .band-swatch {
+    display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 8px;
+  }
+
+  .empty-state {
+    text-align: center; padding: 48px 20px; color: var(--text-2); font-size: 14px;
+  }
+
+  .app-footer {
+    margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border);
+    font-size: 12px; color: var(--text-3); line-height: 1.6;
+  }
+  .app-footer .brand-word { color: var(--text-3); font-size: 12px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+
+  @media (max-width: 560px) {
+    .app { padding: 16px 14px 48px; }
+    .kpis { grid-template-columns: 1fr 1fr; }
+    .ribbon { height: 44px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div>
+      <div class="brand-row">
+        <svg class="brand-logo" viewBox="0 0 32 32" fill="none"><path d="M16 3C10 11 6 16.5 6 21a10 10 0 0020 0c0-4.5-4-10-10-18z" fill="var(--navy)"/><path d="M16 3C10 11 6 16.5 6 21a10 10 0 0020 0c0-4.5-4-10-10-18z" fill="var(--teal)" opacity="0.55" transform="translate(2,4) scale(0.72)"/></svg>
+        <span class="brand-word">Waterpower</span>
+      </div>
+      <h1>Energy cost &amp; billing dashboard</h1>
+      <span class="tagline">Renewable power, sourced locally in Kanturk — transparent wholesale pricing behind every tariff.</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn" id="exportBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16"/></svg>
+        Export Excel
+      </button>
+      <button class="icon-btn" id="themeToggle" aria-label="Toggle dark mode">
+        <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+      <a href="/logout" class="icon-btn" aria-label="Sign out" style="text-decoration:none; display:inline-flex;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--text-2)"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+      </a>
+    </div>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-view="daily">Daily</button>
+    <button class="tab" data-view="weekly">Weekly</button>
+    <button class="tab" data-view="monthly">Monthly</button>
+    <button class="tab" data-view="yearly">Yearly</button>
+    <button class="tab" data-view="custom">Custom range</button>
+  </div>
+
+  <div class="controls" id="dailyControls">
+    <label>Date <input type="date" id="dailyDate"></label>
+  </div>
+  <div class="controls" id="weeklyControls" style="display:none">
+    <label>Any date in the week <input type="date" id="weeklyDate"></label>
+  </div>
+  <div class="controls" id="monthlyControls" style="display:none">
+    <label>Month <select id="monthSelect"></select></label>
+    <label>Year <select id="monthYearSelect"></select></label>
+  </div>
+  <div class="controls" id="yearlyControls" style="display:none">
+    <label>Year <select id="yearlySelect"></select></label>
+  </div>
+  <div class="controls" id="customControls" style="display:none">
+    <label>From <input type="date" id="fromInput"></label>
+    <label>To <input type="date" id="toInput"></label>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-primary" id="loadBtn">Load</button>
+    <div class="tabs" id="granularityTabs" style="display:none; margin:0;">
+      <button class="tab active" data-granularity="hourly">Hourly</button>
+      <button class="tab" data-granularity="raw">30-min</button>
+    </div>
+    <span id="lastUpdated" style="font-size:12px; color:var(--text-3); font-family:'IBM Plex Mono',monospace; margin-left:auto;"></span>
+  </div>
+
+  <div class="controls" style="margin-top:-10px;">
+    <label style="cursor:pointer;">
+      <input type="checkbox" id="compareToggle" style="margin-right:6px; vertical-align:middle;">
+      Compare with last 5 years
+    </label>
+    <span id="compareHint" style="font-size:12px; color:var(--text-3);"></span>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="ribbon-card" id="ribbonCard" style="display:none">
+    <div class="ribbon-title">Hourly price, low → high</div>
+    <div class="ribbon" id="ribbon"></div>
+    <div class="ribbon-labels"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>23:00</span></div>
+  </div>
+
+  <div class="chart-card">
+    <canvas id="chart"></canvas>
+    <div id="drillHint" style="display:none; font-size:12px; color:var(--text-3); margin-top:10px; text-align:center;">
+      Click a bar to drill into that period
+    </div>
+  </div>
+
+  <div class="table-card" id="compareCard" style="display:none">
+    <h2>Year-over-year comparison</h2>
+    <table>
+      <thead><tr><th>Period</th><th>Total cost</th><th>Avg price</th><th>vs current</th></tr></thead>
+      <tbody id="compareBody"></tbody>
+    </table>
+  </div>
+
+  <div class="table-card" id="bandsCard" style="display:none">
+    <h2>Hours by price band</h2>
+    <table>
+      <thead><tr><th>Band</th><th>Hours</th><th>Cost (€)</th></tr></thead>
+      <tbody id="bandsBody"></tbody>
+    </table>
+  </div>
+
+  <footer class="app-footer">
+    <span class="brand-word" style="font-size:13px;">Waterpower</span>
+    <span>· Licensed electricity retailer regulated by the Commission for Regulation of Utilities (CRU) · Strand Street, Kanturk, Co. Cork · Wholesale price data sourced from SEM-O's I-SEM Balancing Market</span>
+  </footer>
+
+</div>
+
+<script>
+const COMPARE_PALETTE = ['#12283D', '#C1622C', '#1E7A6E', '#7C5CBF', '#B8860B', '#4A90A4'];
+</script>
+<script>
+const API_BASE = ""; // same-origin now that the backend serves this file directly (see app/main.py)
+let chart;
+let view = "daily";           // which quick-select is active: daily|weekly|monthly|yearly|custom
+let granularity = "hourly";   // "hourly" | "raw" (30-min) — single-day view only
+let currentData = null;       // { mode: "day"|"range", data } — last-loaded payload, used for export/drill
+let currentCompare = null;    // last comparison payload, if compare toggle is on
+
+/* ---------- Theme ---------- */
+// localStorage can throw (not just return null) on file:// pages in some
+// browsers — notably Safari, especially in Private Browsing — since a
+// file:// page is an "opaque origin" with no persistent storage allowed.
+// An uncaught error here would halt the entire script before anything
+// else runs, so every access is wrapped.
+function safeGetItem(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+function safeSetItem(key, val) { try { localStorage.setItem(key, val); } catch (e) { /* no persistence available; theme just won't be remembered */ } }
+
+const root = document.documentElement;
+const themeIcon = document.getElementById("themeIcon");
+function applyTheme(t) {
+  root.setAttribute("data-theme", t);
+  themeIcon.innerHTML = t === "dark"
+    ? '<path d="M21 12.8A9 9 0 1111.2 3 7 7 0 0021 12.8z" fill="currentColor" stroke="none"/>'
+    : '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
+  themeIcon.style.stroke = "var(--text-2)";
+  safeSetItem("theme", t);
+  if (currentData) render(); // repaint chart colors
+}
+document.getElementById("themeToggle").onclick = () =>
+  applyTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark");
+applyTheme(safeGetItem("theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+
+/* ---------- Tabs & date range ---------- */
+
+const fromInput = document.getElementById("fromInput");
+const toInput = document.getElementById("toInput");
+
+function pad(n) { return String(n).padStart(2, "0"); }
+function toISO(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+function parseLocal(str) { // avoids new Date("YYYY-MM-DD") being parsed as UTC (off-by-one-day risk)
+  const [y, m, d] = str.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function setRangeForView(v, anchorStr) {
+  const anchor = anchorStr ? parseLocal(anchorStr) : new Date();
+  let from, to;
+  if (v === "daily") {
+    from = anchor; to = anchor;
+  } else if (v === "weekly") {
+    const monday = new Date(anchor); monday.setDate(anchor.getDate() - ((anchor.getDay() + 6) % 7));
+    from = monday;
+    to = new Date(monday); to.setDate(monday.getDate() + 6);
+  } else if (v === "monthly") {
+    from = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+    to = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
+  } else { // yearly
+    from = new Date(anchor.getFullYear(), 0, 1);
+    to = new Date(anchor.getFullYear(), 11, 31);
+  }
+  fromInput.value = toISO(from);
+  toInput.value = toISO(to);
+}
+
+/* ---------- Per-view selector controls ----------
+   Each view type gets the selector the spec calls for (single date for
+   Daily/Weekly, Month+Year dropdowns for Monthly, Year dropdown for
+   Yearly, From+To only for Custom range) rather than one generic pair of
+   date pickers for every view. fromInput/toInput remain the single
+   source of truth internally — each selector just computes and writes
+   into them, so load()/render()/compare logic didn't need to change. */
+const CONTROL_GROUPS = { daily: "dailyControls", weekly: "weeklyControls", monthly: "monthlyControls", yearly: "yearlyControls", custom: "customControls" };
+const monthSelect = document.getElementById("monthSelect");
+const monthYearSelect = document.getElementById("monthYearSelect");
+const yearlySelect = document.getElementById("yearlySelect");
+const dailyDate = document.getElementById("dailyDate");
+const weeklyDate = document.getElementById("weeklyDate");
+
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+MONTH_NAMES.forEach((name, i) => {
+  const opt = document.createElement("option"); opt.value = i + 1; opt.textContent = name;
+  monthSelect.appendChild(opt);
+});
+const thisYear = new Date().getFullYear();
+for (let y = thisYear; y >= thisYear - 5; y--) {
+  [monthYearSelect, yearlySelect].forEach(sel => {
+    const opt = document.createElement("option"); opt.value = y; opt.textContent = y;
+    sel.appendChild(opt);
+  });
+}
+
+function showControlGroup(v) {
+  Object.values(CONTROL_GROUPS).forEach(id => document.getElementById(id).style.display = "none");
+  document.getElementById(CONTROL_GROUPS[v]).style.display = "flex";
+}
+
+function syncSelectorsFromAnchor(v, anchorStr) {
+  const anchor = parseLocal(anchorStr);
+  if (v === "daily") dailyDate.value = anchorStr;
+  else if (v === "weekly") weeklyDate.value = anchorStr;
+  else if (v === "monthly") { monthSelect.value = anchor.getMonth() + 1; monthYearSelect.value = anchor.getFullYear(); }
+  else if (v === "yearly") yearlySelect.value = anchor.getFullYear();
+}
+
+document.querySelectorAll('[role="tablist"] .tab').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('[role="tablist"] .tab').forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    view = btn.dataset.view;
+    showControlGroup(view);
+    if (view !== "custom") {
+      setRangeForView(view, fromInput.value); // "Custom range" leaves From/To as-is for free editing
+      syncSelectorsFromAnchor(view, fromInput.value);
+    }
+    load();
+  };
+});
+
+dailyDate.addEventListener("change", () => { setRangeForView("daily", dailyDate.value); load(); });
+weeklyDate.addEventListener("change", () => { setRangeForView("weekly", weeklyDate.value); load(); });
+[monthSelect, monthYearSelect].forEach(el => el.addEventListener("change", () => {
+  setRangeForView("monthly", `${monthYearSelect.value}-${pad(monthSelect.value)}-01`);
+  load();
+}));
+yearlySelect.addEventListener("change", () => {
+  setRangeForView("yearly", `${yearlySelect.value}-01-01`);
+  load();
+});
+
+document.querySelectorAll("#granularityTabs .tab").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll("#granularityTabs .tab").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    granularity = btn.dataset.granularity;
+    if (currentData && currentData.mode === "day") render();
+  };
+});
+
+// Auto-load on date change — matches the "fewer clicks" recommendation.
+// Manually editing From/To overrides whatever quick-select range was set,
+// per the spec ("auto-populate... but user can still override manually").
+let loadDebounce;
+[fromInput, toInput].forEach(el => el.addEventListener("change", () => {
+  document.querySelectorAll('[role="tablist"] .tab').forEach(b => b.classList.remove("active"));
+  document.querySelector('[role="tablist"] .tab[data-view="custom"]').classList.add("active");
+  view = "custom";
+  showControlGroup("custom");
+  clearTimeout(loadDebounce);
+  loadDebounce = setTimeout(load, 150);
+}));
+document.getElementById("loadBtn").onclick = load;
+setRangeForView("daily");
+showControlGroup("daily");
+dailyDate.value = fromInput.value;
+
+document.getElementById("compareToggle").onchange = () => { if (currentData) load(); };
+
+/* ---------- CSS var helper ---------- */
+function cssVar(name) { return getComputedStyle(root).getPropertyValue(name).trim(); }
+
+/* ---------- Period-type for comparison ----------
+   Comparison is now available on every view type (per spec), so this
+   simply mirrors the active tab rather than inferring it from the date
+   span — "custom" gets its own backend period type since an arbitrary
+   range has no natural week/month number to align prior years against
+   (see the design note on _period_bounds in aggregation.py). */
+const VIEW_TO_PERIOD = { daily: "day", weekly: "week", monthly: "month", yearly: "year", custom: "custom" };
+
+/* ---------- Data loading ---------- */
+async function load() {
+  const fromStr = fromInput.value, toStr = toInput.value;
+  if (!fromStr || !toStr) return;
+  document.getElementById("granularityTabs").style.display = fromStr === toStr ? "flex" : "none";
+
+  try {
+    if (fromStr === toStr) {
+      const res = await fetch(`${API_BASE}/api/costs/daily?date_=${fromStr}`);
+      const data = await res.json();
+      if (!res.ok) return renderEmpty(data.detail);
+      currentData = { mode: "day", data };
+    } else {
+      const apiEndDate = parseLocal(toStr); apiEndDate.setDate(apiEndDate.getDate() + 1);
+      const apiEnd = toISO(apiEndDate); // UI "To" is inclusive; API end is exclusive
+      const res = await fetch(`${API_BASE}/api/costs/range?start=${fromStr}&end=${apiEnd}`);
+      const data = await res.json();
+      if (!res.ok) return renderEmpty(data.detail);
+      currentData = { mode: "range", data };
+    }
+    render();
+    await handleCompare(fromStr, toStr);
+  } catch (e) {
+    renderEmpty("Could not reach the API — try refreshing the page.");
+  }
+  const now = new Date();
+  document.getElementById("lastUpdated").textContent =
+    `Updated ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+/* ---------- Auto-refresh ----------
+   BM settlement prices publish on a 30-min cadence, so re-fetch on the
+   same cadence rather than requiring a manual click. */
+setInterval(load, 30 * 60 * 1000);
+
+function renderEmpty(msg) {
+  currentData = null;
+  document.getElementById("kpis").innerHTML = `<div class="empty-state" style="grid-column:1/-1">${msg || "No data for this selection."}</div>`;
+  document.getElementById("ribbonCard").style.display = "none";
+  document.getElementById("bandsCard").style.display = "none";
+  document.getElementById("compareCard").style.display = "none";
+  document.getElementById("drillHint").style.display = "none";
+  if (chart) chart.destroy();
+}
+
+function kpiCard(label, value, cls) {
+  return `<div class="kpi ${cls || ''}"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div></div>`;
+}
+
+/* ---------- Rendering: primary chart ---------- */
+function render() {
+  const { mode, data } = currentData;
+  const teal = cssVar('--teal'), copper = cssVar('--copper'), navy = cssVar('--navy');
+  const text2 = cssVar('--text-2'), border = cssVar('--border');
+  document.getElementById("drillHint").style.display = "none";
+
+  if (mode === "day") {
+    document.getElementById("kpis").innerHTML =
+      kpiCard("Total cost", `€${data.total_cost_eur.toFixed(2)}`) +
+      kpiCard("Avg price", `€${data.average_price_eur_per_mwh}/MWh`) +
+      kpiCard("Peak hour", `€${data.peak_interval_price_eur_per_mwh}/MWh`, "kpi-peak") +
+      kpiCard("Off-peak hour", `€${data.off_peak_interval_price_eur_per_mwh}/MWh`, "kpi-offpeak");
+
+    renderRibbon(data.hourly, teal, copper);
+    renderBands(data.price_bands, teal, copper);
+
+    const points = granularity === "raw" ? data.intervals : data.hourly;
+    const labels = granularity === "raw"
+      ? data.intervals.map(i => i.interval_start.slice(11, 16))
+      : data.hourly.map(h => h.hour_label);
+    const chartLabel = granularity === "raw"
+      ? "Settlement price, 30-min (€/MWh)"
+      : "Settlement price, hourly avg (€/MWh)";
+
+    renderChart({
+      type: "line",
+      labels,
+      datasets: [{
+        label: chartLabel,
+        data: points.map(p => p.price_eur_per_mwh),
+        borderColor: navy, backgroundColor: navy + "22",
+        fill: true, tension: 0.3, pointRadius: granularity === "raw" ? 1.5 : 2,
+      }]
+    }, text2, border);
+
+  } else {
+    document.getElementById("kpis").innerHTML =
+      kpiCard("Total cost", `€${data.total_cost_eur.toFixed(2)}`) +
+      kpiCard("Avg price", `€${data.average_price_eur_per_mwh}/MWh`) +
+      kpiCard("Granularity", data.granularity === "monthly" ? "By month" : "By day");
+
+    document.getElementById("ribbonCard").style.display = "none";
+    document.getElementById("bandsCard").style.display = "none";
+
+    const isDrillable = data.granularity === "daily" || data.granularity === "monthly";
+    if (isDrillable) document.getElementById("drillHint").style.display = "block";
+
+    renderChart({
+      type: "bar",
+      labels: data.points.map(p => data.granularity === "monthly" ? p.label : p.label.slice(5)),
+      datasets: [{
+        label: data.granularity === "monthly" ? "Monthly cost (€)" : "Daily cost (€)",
+        data: data.points.map(p => p.cost_eur),
+        backgroundColor: teal,
+        borderRadius: 4,
+      }],
+      onClick: isDrillable ? (idx) => drillInto(data.points[idx].label, data.granularity) : null,
+    }, text2, border);
+  }
+}
+
+function drillInto(label, granularityOfClick) {
+  if (granularityOfClick === "daily") {
+    fromInput.value = label; toInput.value = label;
+  } else { // monthly bar clicked -> drill to that month's daily breakdown
+    const [y, m] = label.split("-").map(Number);
+    fromInput.value = `${y}-${pad(m)}-01`;
+    toInput.value = toISO(new Date(y, m, 0));
+  }
+  load();
+}
+
+function renderRibbon(hourly, teal, copper) {
+  const card = document.getElementById("ribbonCard");
+  card.style.display = "block";
+  const prices = hourly.map(h => h.price_eur_per_mwh);
+  const min = Math.min(...prices), max = Math.max(...prices);
+  const ribbon = document.getElementById("ribbon");
+  ribbon.innerHTML = hourly.map(h => {
+    const t = max > min ? (h.price_eur_per_mwh - min) / (max - min) : 0.5;
+    const color = mixColor(teal, copper, t);
+    return `<div class="ribbon-cell" style="background:${color}">
+      <div class="ribbon-tooltip">${h.hour_label} · €${h.price_eur_per_mwh}/MWh</div>
+    </div>`;
+  }).join("");
+}
+
+function mixColor(hexA, hexB, t) {
+  const a = hexA.replace('#','').match(/.{2}/g).map(x => parseInt(x, 16));
+  const b = hexB.replace('#','').match(/.{2}/g).map(x => parseInt(x, 16));
+  const m = a.map((c, i) => Math.round(c + (b[i] - c) * t));
+  return `rgb(${m[0]},${m[1]},${m[2]})`;
+}
+
+function renderBands(bands, teal, copper) {
+  const card = document.getElementById("bandsCard");
+  card.style.display = "block";
+  document.getElementById("bandsBody").innerHTML = bands.map((b, i) => {
+    const t = bands.length > 1 ? i / (bands.length - 1) : 0;
+    return `<tr>
+      <td><span class="band-swatch" style="background:${mixColor(teal, copper, t)}"></span>${b.band}/MWh</td>
+      <td>${b.hours}</td>
+      <td>${b.cost_eur.toFixed(2)}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderChart(cfg, text2, border) {
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById("chart"), {
+    type: cfg.type,
+    data: { labels: cfg.labels, datasets: cfg.datasets },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: cfg.datasets.length > 1, labels: { color: text2, font: { family: 'IBM Plex Mono', size: 11 } } },
+      },
+      scales: {
+        x: { ticks: { color: text2, font: { family: 'IBM Plex Mono', size: 11 } }, grid: { color: border } },
+        y: { ticks: { color: text2, font: { family: 'IBM Plex Mono', size: 11 } }, grid: { color: border } },
+      },
+      onClick: cfg.onClick ? (evt, elements) => {
+        if (elements.length) cfg.onClick(elements[0].index);
+      } : undefined,
+      onHover: cfg.onClick ? (evt, elements) => {
+        evt.native.target.style.cursor = elements.length ? "pointer" : "default";
+      } : undefined,
+    }
+  });
+}
+
+/* ---------- Historical comparison ---------- */
+async function handleCompare(fromStr, toStr) {
+  const toggle = document.getElementById("compareToggle");
+  const hint = document.getElementById("compareHint");
+  const period = VIEW_TO_PERIOD[view];
+
+  toggle.disabled = false;
+  hint.textContent = "";
+
+  if (!toggle.checked) {
+    document.getElementById("compareCard").style.display = "none";
+    currentCompare = null;
+    return;
+  }
+
+  const endParam = period === "custom" ? `&end=${toStr}` : "";
+  const res = await fetch(`${API_BASE}/api/costs/compare?period=${period}&anchor=${fromStr}&years=5${endParam}`);
+  const data = await res.json();
+  if (!res.ok) {
+    document.getElementById("compareCard").style.display = "none";
+    hint.textContent = data.detail || "No comparable data found for prior years.";
+    currentCompare = null;
+    return;
+  }
+  currentCompare = data;
+  renderCompare(data);
+}
+
+function renderCompare(data) {
+  const text2 = cssVar('--text-2'), border = cssVar('--border');
+
+  // Overlay chart: one line per year, aligned on the shared x-axis labels
+  // from the current (baseline) series.
+  const labels = data.series[0].points.map(p => p.x);
+  const datasets = data.series.map((s, i) => ({
+    label: s.label,
+    data: s.points.map(p => p.cost_eur),
+    borderColor: COMPARE_PALETTE[i % COMPARE_PALETTE.length],
+    backgroundColor: "transparent",
+    borderWidth: s.is_current ? 3 : 1.5,
+    borderDash: s.is_current ? [] : [4, 3],
+    pointRadius: 2, tension: 0.3,
+  }));
+  renderChart({ type: "line", labels, datasets }, text2, border);
+  document.getElementById("drillHint").style.display = "none";
+
+  // Comparison table with variance %
+  const card = document.getElementById("compareCard");
+  card.style.display = "block";
+  document.getElementById("compareBody").innerHTML = data.series.map(s => `
+    <tr>
+      <td>${s.label}${s.is_current ? " (current)" : ""}</td>
+      <td>€${s.total_cost_eur.toFixed(2)}</td>
+      <td>€${s.average_price_eur_per_mwh}/MWh</td>
+      <td>${s.variance_pct_vs_current === null ? "—" : (s.variance_pct_vs_current > 0 ? "+" : "") + s.variance_pct_vs_current + "%"}</td>
+    </tr>
+  `).join("");
+}
+
+/* ---------- Excel export ---------- */
+/* ---------- Styled Excel export ----------
+   xlsx-js-style (a maintained SheetJS-compatible fork) adds free cell
+   styling — fonts, fills, borders, number formats — that the base SheetJS
+   community build doesn't support without a paid Pro license. */
+const EUR_FMT = '"€"#,##0.00';
+const MWH_FMT = '#,##0.000';
+const PCT_FMT = '+0.0%;-0.0%;0.0%';
+
+function styledSheet(rows, columnDefs) {
+  const headerRow = columnDefs.map(c => c.header);
+  const dataRows = rows.map(r => columnDefs.map(c => r[c.key]));
+  const ws = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows]);
+
+  const headerStyle = {
+    font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11 },
+    fill: { fgColor: { rgb: "0B4F6C" } }, // Waterpower brand blue
+    alignment: { horizontal: "left", vertical: "center" },
+  };
+
+  columnDefs.forEach((c, colIdx) => {
+    const headerRef = XLSX.utils.encode_cell({ r: 0, c: colIdx });
+    if (ws[headerRef]) ws[headerRef].s = headerStyle;
+
+    for (let r = 0; r < rows.length; r++) {
+      const ref = XLSX.utils.encode_cell({ r: r + 1, c: colIdx });
+      const cell = ws[ref];
+      if (!cell) continue;
+      cell.s = {
+        alignment: { horizontal: c.numFmt ? "right" : "left" },
+        fill: { fgColor: { rgb: r % 2 === 1 ? "EAF1EF" : "FFFFFF" } }, // subtle banding
+      };
+      if (c.numFmt) { cell.z = c.numFmt; cell.t = "n"; }
+    }
+  });
+
+  ws["!cols"] = columnDefs.map(c => ({ wch: c.width || 14 }));
+  ws["!rows"] = [{ hpx: 22 }]; // slightly taller header row
+  return ws;
+}
+
+document.getElementById("exportBtn").onclick = () => {
+  if (!currentData) { alert("Load some data first."); return; }
+  const { mode, data } = currentData;
+  const wb = XLSX.utils.book_new();
+
+  if (mode === "day") {
+    const hourlySheet = styledSheet(data.hourly, [
+      { key: "hour_label", header: "Hour", width: 10 },
+      { key: "price_eur_per_mwh", header: "Price (€/MWh)", width: 16, numFmt: EUR_FMT },
+      { key: "volume_mwh", header: "Volume (MWh)", width: 14, numFmt: MWH_FMT },
+      { key: "cost_eur", header: "Cost (€)", width: 14, numFmt: EUR_FMT },
+    ]);
+    XLSX.utils.book_append_sheet(wb, hourlySheet, "Hourly");
+
+    const rawRows = data.intervals.map(i => ({ ...i, interval_start_display: i.interval_start.replace("T", " ") }));
+    const rawSheet = styledSheet(rawRows, [
+      { key: "interval_start_display", header: "Interval start", width: 20 },
+      { key: "price_eur_per_mwh", header: "Price (€/MWh)", width: 16, numFmt: EUR_FMT },
+      { key: "volume_mwh", header: "Volume (MWh)", width: 14, numFmt: MWH_FMT },
+      { key: "cost_eur", header: "Cost (€)", width: 14, numFmt: EUR_FMT },
+    ]);
+    XLSX.utils.book_append_sheet(wb, rawSheet, "30-min settlement");
+
+    const bandRows = data.price_bands.map(b => ({ ...b, band_display: b.band + "/MWh" }));
+    const bandsSheet = styledSheet(bandRows, [
+      { key: "band_display", header: "Price band", width: 16 },
+      { key: "hours", header: "Hours", width: 10, numFmt: "0" },
+      { key: "cost_eur", header: "Cost (€)", width: 14, numFmt: EUR_FMT },
+    ]);
+    XLSX.utils.book_append_sheet(wb, bandsSheet, "Price bands");
+
+    XLSX.writeFile(wb, `waterpower-procurement-cost-${data.date}.xlsx`);
+  } else {
+    const rowsSheet = styledSheet(data.points, [
+      { key: "label", header: data.granularity === "monthly" ? "Month" : "Date", width: 16 },
+      { key: "cost_eur", header: "Cost (€)", width: 14, numFmt: EUR_FMT },
+      { key: "volume_mwh", header: "Volume (MWh)", width: 14, numFmt: MWH_FMT },
+      { key: "average_price_eur_per_mwh", header: "Avg price (€/MWh)", width: 18, numFmt: EUR_FMT },
+    ]);
+    XLSX.utils.book_append_sheet(wb, rowsSheet, data.granularity === "monthly" ? "Monthly breakdown" : "Daily breakdown");
+
+    if (currentCompare) {
+      const compRows = currentCompare.series.map(s => ({
+        ...s, variance_fraction: s.variance_pct_vs_current === null ? null : s.variance_pct_vs_current / 100,
+      }));
+      const compSheet = styledSheet(compRows, [
+        { key: "label", header: "Period", width: 16 },
+        { key: "total_cost_eur", header: "Total cost (€)", width: 16, numFmt: EUR_FMT },
+        { key: "average_price_eur_per_mwh", header: "Avg price (€/MWh)", width: 18, numFmt: EUR_FMT },
+        { key: "variance_fraction", header: "Variance vs current", width: 16, numFmt: PCT_FMT },
+      ]);
+      XLSX.utils.book_append_sheet(wb, compSheet, "YoY comparison");
+    }
+
+    XLSX.writeFile(wb, `waterpower-procurement-cost-${data.start}-to-${data.end}.xlsx`);
+  }
+};
+
+load();
+</script>
+</body>
+</html>
