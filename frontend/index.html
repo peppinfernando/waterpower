@@ -131,6 +131,23 @@
   }
   .topbar-actions { display: flex; gap: 10px; align-items: center; }
 
+  .tools-menu { position: relative; }
+  #toolsMenuBtn svg:last-child { transition: transform 0.15s ease; }
+  .tools-dropdown {
+    position: absolute; top: calc(100% + 8px); right: 0; z-index: 20;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow); padding: 6px; min-width: 260px;
+  }
+  .tools-dropdown-item {
+    display: flex; align-items: flex-start; gap: 10px; width: 100%;
+    padding: 10px 12px; border-radius: 8px; border: none; background: none;
+    text-align: left; font-family: 'Inter', sans-serif; cursor: pointer;
+  }
+  .tools-dropdown-item:hover { background: var(--surface-2); }
+  .tools-dropdown-item svg { flex-shrink: 0; margin-top: 2px; color: var(--text-2); }
+  .tools-dropdown-item-title { display: block; font-size: 13.5px; font-weight: 500; color: var(--text); }
+  .tools-dropdown-item-sub { display: block; font-size: 12px; color: var(--text-3); margin-top: 2px; }
+
   button {
     font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 500;
     border-radius: 8px; cursor: pointer; transition: all 0.15s ease;
@@ -172,6 +189,28 @@
   .controls .tab { padding: 6px 12px; font-size: 13px; }
   .granularity-group { display: flex; align-items: center; gap: 8px; }
   .control-label { font-size: 13px; color: var(--text-2); }
+
+  /* Custom toggle switch — replaces a bare checkbox for the compare
+     control, matching the rest of the app's deliberate, custom-styled
+     look rather than leaving one native form control unstyled. */
+  .switch-label {
+    display: inline-flex; align-items: center; gap: 10px; cursor: pointer;
+    font-size: 13px; color: var(--text-2);
+  }
+  .switch { position: relative; display: inline-block; width: 38px; height: 22px; flex-shrink: 0; }
+  .switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; z-index: 1; }
+  .switch-track {
+    position: absolute; inset: 0; background: var(--border); border-radius: 999px;
+    transition: background 0.15s ease;
+  }
+  .switch-thumb {
+    position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
+    background: var(--surface); border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    transition: transform 0.15s ease;
+  }
+  .switch input:checked + .switch-track { background: var(--teal); }
+  .switch input:checked + .switch-track .switch-thumb { transform: translateX(16px); }
+  .switch input:focus-visible + .switch-track { outline: 2px solid var(--teal); outline-offset: 2px; }
   .controls label {
     font-size: 13px; color: var(--text-2); display: flex; align-items: center; gap: 8px;
   }
@@ -226,6 +265,21 @@
   .chart-card {
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
     padding: 18px; margin-bottom: 22px; box-shadow: var(--shadow);
+  }
+  .chart-card-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 10px; flex-wrap: wrap; gap: 8px;
+  }
+  #chartGranularityCaption {
+    font-size: 12px; font-weight: 500; color: var(--text-3);
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .color-legend {
+    display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-3);
+  }
+  .color-legend-gradient {
+    width: 60px; height: 8px; border-radius: 4px;
+    background: linear-gradient(to right, var(--teal), var(--copper));
   }
   canvas { max-height: 340px; }
 
@@ -343,14 +397,29 @@
       <span class="tagline" id="brandTagline">Independent I-SEM wholesale cost tracking — transparent pricing behind every tariff decision.</span>
     </div>
     <div class="topbar-actions">
-      <button class="btn" id="brandPreviewBtn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-        Preview: Waterpower
-      </button>
-      <button class="btn" id="tariffBtn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10h12M4 14h9M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12a7.9 7.9 0 0 0 7.8 8 7.7 7.7 0 0 0 5.2-2"/></svg>
-        Tariff calculator
-      </button>
+      <div class="tools-menu" id="toolsMenu">
+        <button class="btn" id="toolsMenuBtn" aria-haspopup="true" aria-expanded="false">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+          Tools
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="toolsChevron"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="tools-dropdown" id="toolsDropdown" style="display:none">
+          <button class="tools-dropdown-item" id="tariffBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 10h12M4 14h9M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12a7.9 7.9 0 0 0 7.8 8 7.7 7.7 0 0 0 5.2-2"/></svg>
+            <span>
+              <span class="tools-dropdown-item-title">Tariff calculator</span>
+              <span class="tools-dropdown-item-sub">Propose a retail tariff from wholesale cost</span>
+            </span>
+          </button>
+          <button class="tools-dropdown-item" id="brandPreviewBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <span>
+              <span class="tools-dropdown-item-title" id="brandPreviewBtnTitle">Preview: Waterpower</span>
+              <span class="tools-dropdown-item-sub">See the dashboard skinned for a prospect</span>
+            </span>
+          </button>
+        </div>
+      </div>
       <button class="btn" id="exportBtn">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16"/></svg>
         Export Excel
@@ -374,7 +443,7 @@
 
   <div class="controls" id="dailyControls">
     <label>Date <input type="date" id="dailyDate"></label>
-    <button class="btn btn-primary" id="loadBtn">Load</button>
+    <button class="btn" id="loadBtn">Load</button>
   </div>
   <div class="controls" id="weeklyControls" style="display:none">
     <label>Any date in the week <input type="date" id="weeklyDate"></label>
@@ -433,8 +502,11 @@
   </div>
 
   <div class="controls" style="margin-top:-10px;">
-    <label style="cursor:pointer;">
-      <input type="checkbox" id="compareToggle" style="margin-right:6px; vertical-align:middle;">
+    <label class="switch-label">
+      <span class="switch">
+        <input type="checkbox" id="compareToggle">
+        <span class="switch-track"><span class="switch-thumb"></span></span>
+      </span>
       Compare with last 5 years
     </label>
     <span id="compareHint" style="font-size:12px; color:var(--text-3);"></span>
@@ -454,6 +526,14 @@
   </div>
 
   <div class="chart-card">
+    <div class="chart-card-header">
+      <span id="chartGranularityCaption" style="display:none;"></span>
+      <div class="color-legend" id="colorLegend" style="display:none;">
+        <span>Cheapest</span>
+        <span class="color-legend-gradient"></span>
+        <span>Priciest</span>
+      </div>
+    </div>
     <canvas id="chart"></canvas>
     <div id="drillHint" style="display:none; font-size:12px; color:var(--text-3); margin-top:10px; text-align:center;">
       Click a bar to drill into that period
@@ -571,17 +651,39 @@ function applyBrand(brand) {
   document.getElementById("brandTagline").style.display = isWaterpower ? "none" : "block";
 
   document.getElementById("brandPreviewBadge").style.display = isWaterpower ? "flex" : "none";
-  const btn = document.getElementById("brandPreviewBtn");
-  btn.innerHTML = isWaterpower
-    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg> Exit preview'
-    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Preview: Waterpower';
+  document.getElementById("brandPreviewBtnTitle").textContent = isWaterpower ? "Exit preview" : "Preview: Waterpower";
   if (currentData) render(); // repaint chart colors for the new palette
 }
 document.getElementById("brandPreviewBtn").onclick = () => {
   brandPreview = !brandPreview;
   applyBrand(brandPreview ? "waterpower" : "walterjr");
+  closeToolsMenu();
 };
 applyBrand("walterjr");
+
+/* ---------- Tools dropdown ---------- */
+const toolsMenu = document.getElementById("toolsMenu");
+const toolsDropdown = document.getElementById("toolsDropdown");
+const toolsChevron = document.getElementById("toolsChevron");
+function openToolsMenu() {
+  toolsDropdown.style.display = "block";
+  toolsChevron.style.transform = "rotate(180deg)";
+  document.getElementById("toolsMenuBtn").setAttribute("aria-expanded", "true");
+}
+function closeToolsMenu() {
+  toolsDropdown.style.display = "none";
+  toolsChevron.style.transform = "rotate(0deg)";
+  document.getElementById("toolsMenuBtn").setAttribute("aria-expanded", "false");
+}
+document.getElementById("toolsMenuBtn").onclick = () => {
+  toolsDropdown.style.display === "none" ? openToolsMenu() : closeToolsMenu();
+};
+document.addEventListener("click", (e) => {
+  if (!toolsMenu.contains(e.target)) closeToolsMenu();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeToolsMenu();
+});
 
 /* ---------- Tabs & date range ---------- */
 
@@ -833,6 +935,8 @@ function render() {
   document.getElementById("drillHint").style.display = "none";
 
   if (mode === "day") {
+    document.getElementById("chartGranularityCaption").style.display = "none";
+    document.getElementById("colorLegend").style.display = "none";
     document.getElementById("kpis").innerHTML =
       kpiCard("Total cost", `€${data.total_cost_eur.toFixed(2)}`) +
       kpiCard("Avg price", `€${data.average_price_eur_per_mwh}/MWh`) +
@@ -879,10 +983,15 @@ function render() {
       hourly: "Hourly cost (€)", daily: "Daily cost (€)", weekly: "Weekly cost (€)",
       monthly: "Monthly cost (€)", quarterly: "Quarterly cost (€)",
     };
+    // "Granularity" is UI state, not a metric — it doesn't belong beside
+    // Total Cost / Avg Price in the KPI grid, where every other card is a
+    // real number. It reads instead as a small caption on the chart card.
     document.getElementById("kpis").innerHTML =
       kpiCard("Total cost", `€${data.total_cost_eur.toFixed(2)}`) +
-      kpiCard("Avg price", `€${data.average_price_eur_per_mwh}/MWh`) +
-      kpiCard("Granularity", GRANULARITY_LABELS[data.granularity] || data.granularity);
+      kpiCard("Avg price", `€${data.average_price_eur_per_mwh}/MWh`);
+    document.getElementById("chartGranularityCaption").textContent = GRANULARITY_LABELS[data.granularity] || data.granularity;
+    document.getElementById("chartGranularityCaption").style.display = "block";
+    document.getElementById("colorLegend").style.display = "flex";
 
     // ISO date labels ("2026-08-20") are shortened to "08-20" for a daily
     // chart's x-axis; every other granularity's label is already compact
@@ -890,13 +999,24 @@ function render() {
     const chartLabels = data.points.map(p =>
       data.granularity === "daily" && /^\d{4}-\d{2}-\d{2}$/.test(p.label) ? p.label.slice(5) : p.label);
 
+    // Color-coded by each bar's own cost, teal (cheapest) to copper
+    // (priciest) — the same gradient the daily price ribbon already uses,
+    // so every chart in the app is scannable for "which period was
+    // expensive" without reading the axis, not just the daily view.
+    const costs = data.points.map(p => p.cost_eur);
+    const minCost = Math.min(...costs), maxCost = Math.max(...costs);
+    const barColors = costs.map(c => {
+      const t = maxCost > minCost ? (c - minCost) / (maxCost - minCost) : 0.5;
+      return mixColor(teal, copper, t);
+    });
+
     renderChart({
       type: "bar",
       labels: chartLabels,
       datasets: [{
         label: CHART_LABELS[data.granularity] || "Cost (€)",
-        data: data.points.map(p => p.cost_eur),
-        backgroundColor: teal,
+        data: costs,
+        backgroundColor: barColors,
         borderRadius: 4,
       }],
       onClick: isDrillable ? (idx) => drillInto(data.points[idx].label, data.granularity) : null,
@@ -1152,6 +1272,7 @@ document.getElementById("tariffBtn").onclick = () => {
   tariffPanel.style.display = opening ? "block" : "none";
   if (opening && !tariffFrom.value) defaultTariffRange();
   if (opening) tariffPanel.scrollIntoView && tariffPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  closeToolsMenu();
 };
 document.getElementById("tariffCloseBtn").onclick = () => { tariffPanel.style.display = "none"; };
 
