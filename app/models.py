@@ -73,3 +73,23 @@ class CostRecord(Base):
         UniqueConstraint("interval_start", "interval_minutes", name="uq_cost_interval"),
         Index("ix_cost_interval_start", "interval_start"),
     )
+
+
+class ActiveSession(Base):
+    """Server-side session record — what actually makes a session
+    "killable". A signed cookie alone (the previous auth design) can't be
+    revoked once issued; the browser holds a valid, unforgeable token and
+    there's no server-side state to invalidate short of rotating
+    SESSION_SECRET, which kills every session for every account at once.
+
+    Each login creates exactly one row here, and the cookie carries only
+    an opaque session_id pointing at it — so a login can be killed
+    individually (this account only), collectively (kill-all), or expire
+    on its own (idle timeout / absolute lifetime), all by deleting or
+    aging out this row, with the cookie itself never needing to change."""
+    __tablename__ = "active_sessions"
+
+    session_id = Column(String, primary_key=True)  # secrets.token_urlsafe(32)
+    username = Column(String, nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    last_seen_at = Column(DateTime, nullable=False, default=datetime.utcnow)

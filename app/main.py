@@ -4,15 +4,16 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app import auth
-from app.database import Base, engine, session_scope
+from app.database import Base, engine, session_scope, get_db
 from app.ingestion.sem_o_client import get_client
 from app.models import SettlementPrice
 from app.routers import costs, tariff
@@ -106,9 +107,33 @@ async def login_submit(request: Request):
 
 
 @app.get("/logout")
-def logout(request: Request):
+def logout(request: Request, db: Session = Depends(get_db)):
+    session_id = request.session.get("session_id")
+    if session_id:
+        auth.kill_session(db, session_id)  # server-side revoke, not just clearing the cookie
     request.session.clear()
     return RedirectResponse("/login")
+
+
+@app.get("/api/session/whoami")
+def whoami(request: Request):
+    username = getattr(request.state, "username", None)
+    return {"username": username, "is_admin": auth.is_admin(username)}
+
+
+@app.post("/api/session/kill-all")
+def kill_all_sessions(request: Request, db: Session = Depends(get_db)):
+    """The manual kill-switch. Deliberately restricted to the admin
+    account — anyone could otherwise force-logout the trial account
+    they're trying to demo to, which is the opposite of what this is
+    for. Ends every session including the caller's own, which is the
+    honest behavior for "force everyone to re-login," not a bug."""
+    username = getattr(request.state, "username", None)
+    if not auth.is_admin(username):
+        raise HTTPException(403, "Only the admin account can do this")
+    count = auth.kill_all_sessions(db)
+    request.session.clear()
+    return {"sessions_ended": count}
 
 
 def _serve_static_file(name: str):
@@ -122,7 +147,9 @@ async def _handle_login(request: Request):
     username, password = form.get("username", ""), form.get("password", "")
     ok, reason = auth.check_credentials(username, password)
     if ok:
-        request.session["authenticated"] = True
+        with session_scope() as db:
+            session_id = auth.create_session(db, username)
+        request.session["session_id"] = session_id
         return RedirectResponse("/", status_code=303)
     error_code = "expired" if reason == "expired" else "1"
     return RedirectResponse(f"/login?error={error_code}", status_code=303)

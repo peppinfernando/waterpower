@@ -418,6 +418,13 @@
               <span class="tools-dropdown-item-sub">See the dashboard skinned for a prospect</span>
             </span>
           </button>
+          <button class="tools-dropdown-item" id="killAllBtn" style="display:none;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18.36 6.64a9 9 0 11-12.73 0M12 2v10"/></svg>
+            <span>
+              <span class="tools-dropdown-item-title" style="color:var(--copper);">End all active sessions</span>
+              <span class="tools-dropdown-item-sub">Force everyone, including you, to log back in</span>
+            </span>
+          </button>
         </div>
       </div>
       <button class="btn" id="exportBtn">
@@ -593,6 +600,24 @@ const COMPARE_PALETTE = ['#12283D', '#C1622C', '#1E7A6E', '#7C5CBF', '#B8860B', 
 </script>
 <script>
 const API_BASE = ""; // same-origin now that the backend serves this file directly (see app/main.py)
+
+// Session can now genuinely end mid-use — idle timeout, someone else
+// logging into a shared trial account (kicks the old session out), or
+// an admin using the kill-switch. Without this, that would surface as a
+// confusing "Not authenticated" error message buried in the empty-state
+// text; a full-page redirect to /login is the honest, expected result
+// of a session actually ending, so every fetch goes through this.
+async function apiFetch(url) {
+  const res = await fetch(url);
+  if (res.status === 401) {
+    window.location.href = "/login";
+    // Never resolves — the redirect is already underway, and nothing
+    // downstream should try to read a body from a 401 it's not getting.
+    return new Promise(() => {});
+  }
+  return res;
+}
+
 let chart;
 let view = "daily";           // which quick-select is active: daily|weekly|monthly|yearly|custom
 let granularity = "hourly";   // "hourly" | "raw" (30-min) — single-day view only
@@ -684,6 +709,23 @@ document.addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closeToolsMenu();
 });
+
+// Only the admin account can see/use the kill-switch — check once on
+// load rather than guessing client-side, since the actual restriction
+// is enforced server-side anyway (this just avoids showing a button
+// that would 403 for everyone else).
+apiFetch(`${API_BASE}/api/session/whoami`).then(r => r.json()).then(data => {
+  if (data.is_admin) document.getElementById("killAllBtn").style.display = "flex";
+}).catch(() => {});
+
+document.getElementById("killAllBtn").onclick = async () => {
+  closeToolsMenu();
+  if (!confirm("This will immediately log out every active session, including yours. Continue?")) return;
+  try {
+    await fetch(`${API_BASE}/api/session/kill-all`, { method: "POST" });
+  } catch (e) { /* falls through to redirect regardless — the session is ending either way */ }
+  window.location.href = "/login";
+};
 
 /* ---------- Tabs & date range ---------- */
 
@@ -883,7 +925,7 @@ async function load() {
   showLoading();
   try {
     if (fromStr === toStr) {
-      const res = await fetch(`${API_BASE}/api/costs/daily?date_=${fromStr}`);
+      const res = await apiFetch(`${API_BASE}/api/costs/daily?date_=${fromStr}`);
       const data = await res.json();
       if (!res.ok) return renderEmpty(data.detail);
       currentData = { mode: "day", data };
@@ -891,7 +933,7 @@ async function load() {
       const apiEndDate = parseLocal(toStr); apiEndDate.setDate(apiEndDate.getDate() + 1);
       const apiEnd = toISO(apiEndDate); // UI "To" is inclusive; API end is exclusive
       const granularityParam = (view === "custom" && rangeGranularity === "auto") ? "" : `&granularity=${rangeGranularity}`;
-      const res = await fetch(`${API_BASE}/api/costs/range?start=${fromStr}&end=${apiEnd}${granularityParam}`);
+      const res = await apiFetch(`${API_BASE}/api/costs/range?start=${fromStr}&end=${apiEnd}${granularityParam}`);
       const data = await res.json();
       if (!res.ok) return renderEmpty(data.detail);
       currentData = { mode: "range", data };
@@ -1110,7 +1152,7 @@ async function handleCompare(fromStr, toStr) {
   }
 
   const endParam = period === "custom" ? `&end=${toStr}` : "";
-  const res = await fetch(`${API_BASE}/api/costs/compare?period=${period}&anchor=${fromStr}&years=5${endParam}`);
+  const res = await apiFetch(`${API_BASE}/api/costs/compare?period=${period}&anchor=${fromStr}&years=5${endParam}`);
   const data = await res.json();
   if (!res.ok) {
     document.getElementById("compareCard").style.display = "none";
@@ -1303,7 +1345,7 @@ document.getElementById("tariffCalcBtn").onclick = async () => {
       start, end: apiEnd, target_margin_pct: margin,
       network_charge_eur_per_kwh: networkCharge, pso_levy_eur_per_month: psoLevy, vat_pct: vat,
     });
-    const res = await fetch(`${API_BASE}/api/tariff/calculate?${params}`);
+    const res = await apiFetch(`${API_BASE}/api/tariff/calculate?${params}`);
     const data = await res.json();
     if (!res.ok) { results.innerHTML = `<div class="empty-state">${data.detail || "No data for this range."}</div>`; return; }
     renderTariffResults(data);

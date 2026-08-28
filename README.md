@@ -76,8 +76,15 @@ pip install -r requirements.txt
 
 # uses SQLite by default; set DATABASE_URL for Postgres
 export SEMO_CLIENT=mock   # or "static_report" once wired to a real SEM-O feed
-export WATERPOWER_USERNAME=admin       # login credentials for the demo gate
+export WATERPOWER_USERNAME=admin       # admin account
 export WATERPOWER_PASSWORD=changeme     # change this — the code default is not secure
+export TEST_USERNAME=test               # optional second account, e.g. for internal testing
+export TEST_PASSWORD=changeme2
+export TRIAL_USERNAME=waterpower        # optional third account, for a time-boxed trial share
+export TRIAL_PASSWORD=changeme3
+export TRIAL_EXPIRES=2026-09-01         # trial account stops working after this date (YYYY-MM-DD)
+export SESSION_IDLE_TIMEOUT_MINUTES=30  # optional, defaults to 30 — auto-logout after this much inactivity
+export SESSION_ABSOLUTE_HOURS=12        # optional, defaults to 12 — force re-login after this long regardless of activity
 export SESSION_SECRET=$(openssl rand -hex 32)   # random secret for signing session cookies
 
 python seed_mock_data.py --days 30   # or --days 1825 for 5 years, needed for year-over-year comparison
@@ -87,7 +94,29 @@ uvicorn app.main:app --reload
 Then open **http://localhost:8000** in a browser — you'll land on a login
 page first. Sign in with whatever you set `WATERPOWER_USERNAME` /
 `WATERPOWER_PASSWORD` to (defaults to `admin` / `waterpower2026` if you
-don't set them, but change that before showing this to anyone).
+don't set them, but change that before showing this to anyone). Two
+additional accounts are supported — `TEST_USERNAME`/`TEST_PASSWORD` and
+`TRIAL_USERNAME`/`TRIAL_PASSWORD` — both optional (the login page just
+won't accept them if their env vars aren't set). The trial account can
+be given an expiry date via `TRIAL_EXPIRES`, useful for sharing
+time-boxed access without needing to remember to revoke it manually.
+
+**Session security:** sessions are now tracked server-side (not just a
+signed cookie), which makes them genuinely revocable:
+- **Auto-logout on inactivity** — `SESSION_IDLE_TIMEOUT_MINUTES` (default
+  30). A sliding window: any request resets the clock.
+- **Absolute session lifetime** — `SESSION_ABSOLUTE_HOURS` (default 12).
+  Forces re-login after this long regardless of activity.
+- **Single active session per account** — logging into an account again
+  (e.g. from a different device) silently ends any other active session
+  for that same account. Relevant if a shared credential like the trial
+  login ever gets passed around more widely than intended.
+- **Manual kill-switch** — the admin account only, from the Tools menu
+  ("End all active sessions") or `POST /api/session/kill-all`. Ends
+  every session for every account immediately, including the admin's
+  own. Useful if you suspect a credential has leaked and want to force
+  everyone to re-authenticate on demand rather than waiting for the
+  trial expiry date.
 
 The dashboard is now served *by* the FastAPI app itself (not opened as a
 separate local file) — see `app/main.py`'s `StaticFiles` mount. This was a
