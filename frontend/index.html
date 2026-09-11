@@ -229,6 +229,15 @@
     padding: 16px 18px; box-shadow: var(--shadow);
   }
   .kpi-label { font-size: 12px; color: var(--text-2); margin-bottom: 6px; }
+
+  .data-source-badge {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500;
+    padding: 5px 12px; border-radius: 999px; margin: -10px 0 22px;
+  }
+  .data-source-actual { background: var(--teal-2); color: var(--teal); }
+  .data-source-notional { background: var(--surface-2); color: var(--text-3); }
+  .data-source-mixed { background: var(--copper-2); color: var(--copper); }
+
   .kpi-value {
     font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 600;
     font-variant-numeric: tabular-nums;
@@ -411,6 +420,13 @@
               <span class="tools-dropdown-item-sub">Propose a retail tariff from wholesale cost</span>
             </span>
           </button>
+          <button class="tools-dropdown-item" id="usageUploadBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            <span>
+              <span class="tools-dropdown-item-title">Upload usage data</span>
+              <span class="tools-dropdown-item-sub">Replace estimated volumes with actual metered usage</span>
+            </span>
+          </button>
           <button class="tools-dropdown-item" id="brandPreviewBtn">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             <span>
@@ -520,6 +536,7 @@
   </div>
 
   <div class="kpis" id="kpis"></div>
+  <span class="data-source-badge" id="dataSourceBadge" style="display:none;"></span>
 
   <div class="loading-overlay" id="loadingOverlay" style="display:none">
     <div class="loading-spinner"></div>
@@ -586,6 +603,24 @@
     <p class="tariff-panel-note">Network charge defaults to €0 — the exact current domestic DUoS/TUoS rate depends on connection type and isn't hardcoded here; check ESB Networks' current Statement of Charges and enter the real figure. PSO levy and VAT default to current CRU/Revenue rates but are worth verifying before relying on this for a real pricing decision.</p>
 
     <div id="tariffResults"></div>
+  </div>
+
+  <div class="tariff-panel" id="usagePanel" style="display:none">
+    <div class="tariff-panel-header">
+      <h2>Upload usage data</h2>
+      <button class="icon-btn" id="usageCloseBtn" aria-label="Close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <p class="tariff-panel-sub">Upload actual metered electricity usage (CSV) and every date it covers switches from the estimated flat-load figure to a real cost — automatically, on the existing Daily/Weekly/Monthly views, no separate report to check.</p>
+    <p class="tariff-panel-note">Expected columns: a timestamp (<code>interval_start</code>, or separate <code>date</code> + <code>time</code>) and a usage reading in kWh (<code>usage_kwh</code>, <code>kWh</code>, or similar). 30-minute intervals, matching the wholesale price data — but a file with gaps or a partial day is fine too.</p>
+
+    <div class="controls">
+      <input type="file" id="usageFileInput" accept=".csv" style="font-size:13px;">
+      <button class="btn btn-primary" id="usageUploadSubmitBtn" disabled>Upload</button>
+    </div>
+
+    <div id="usageResults"></div>
   </div>
 
   <footer class="app-footer">
@@ -895,6 +930,7 @@ const VIEW_TO_PERIOD = { daily: "day", weekly: "week", monthly: "month", yearly:
 let wakeTimer = null;
 function showLoading() {
   document.getElementById("kpis").innerHTML = "";
+  document.getElementById("dataSourceBadge").style.display = "none";
   document.getElementById("ribbonCard").style.display = "none";
   document.getElementById("bandsCard").style.display = "none";
   document.getElementById("compareCard").style.display = "none";
@@ -985,6 +1021,25 @@ function render() {
       kpiCard("Peak hour", `€${data.peak_interval_price_eur_per_mwh}/MWh`, "kpi-peak") +
       kpiCard("Off-peak hour", `€${data.off_peak_interval_price_eur_per_mwh}/MWh`, "kpi-offpeak");
 
+    // Every interval now carries volume_is_actual — once usage data has
+    // been uploaded for a date, this tells the person looking at the
+    // dashboard whether they're seeing a real, billable figure or still
+    // the flat-load estimate, rather than leaving it ambiguous.
+    const actualCount = data.intervals.filter(i => i.volume_is_actual).length;
+    const totalCount = data.intervals.length;
+    const dataSourceBadge = document.getElementById("dataSourceBadge");
+    if (actualCount === totalCount) {
+      dataSourceBadge.textContent = "Actual metered usage";
+      dataSourceBadge.className = "data-source-badge data-source-actual";
+    } else if (actualCount === 0) {
+      dataSourceBadge.textContent = "Estimated (notional load)";
+      dataSourceBadge.className = "data-source-badge data-source-notional";
+    } else {
+      dataSourceBadge.textContent = `Mixed — ${actualCount}/${totalCount} intervals actual`;
+      dataSourceBadge.className = "data-source-badge data-source-mixed";
+    }
+    dataSourceBadge.style.display = "inline-flex";
+
     renderRibbon(data.hourly, teal, copper);
     renderBands(data.price_bands, teal, copper);
 
@@ -1034,6 +1089,7 @@ function render() {
     document.getElementById("chartGranularityCaption").textContent = GRANULARITY_LABELS[data.granularity] || data.granularity;
     document.getElementById("chartGranularityCaption").style.display = "block";
     document.getElementById("colorLegend").style.display = "flex";
+    document.getElementById("dataSourceBadge").style.display = "none";
 
     // ISO date labels ("2026-08-20") are shortened to "08-20" for a daily
     // chart's x-axis; every other granularity's label is already compact
@@ -1317,6 +1373,75 @@ document.getElementById("tariffBtn").onclick = () => {
   closeToolsMenu();
 };
 document.getElementById("tariffCloseBtn").onclick = () => { tariffPanel.style.display = "none"; };
+
+/* ---------- Usage data upload ---------- */
+const usagePanel = document.getElementById("usagePanel");
+document.getElementById("usageUploadBtn").onclick = () => {
+  const opening = usagePanel.style.display === "none";
+  usagePanel.style.display = opening ? "block" : "none";
+  if (opening) usagePanel.scrollIntoView && usagePanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  closeToolsMenu();
+};
+document.getElementById("usageCloseBtn").onclick = () => { usagePanel.style.display = "none"; };
+
+const usageFileInput = document.getElementById("usageFileInput");
+const usageSubmitBtn = document.getElementById("usageUploadSubmitBtn");
+usageFileInput.onchange = () => { usageSubmitBtn.disabled = !usageFileInput.files.length; };
+
+usageSubmitBtn.onclick = async () => {
+  const file = usageFileInput.files[0];
+  const results = document.getElementById("usageResults");
+  if (!file) return;
+
+  usageSubmitBtn.disabled = true;
+  results.innerHTML = `<div class="empty-state">Uploading and parsing…</div>`;
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const res = await fetch(`${API_BASE}/api/usage/upload`, { method: "POST", body: formData });
+    const data = await res.json();
+    if (res.status === 401) { window.location.href = "/login"; return; }
+    if (!res.ok) {
+      results.innerHTML = `<div class="empty-state">${data.detail || "Upload failed — check the file format."}</div>`;
+      usageSubmitBtn.disabled = false;
+      return;
+    }
+    renderUsageResults(data);
+    usageFileInput.value = "";
+    usageSubmitBtn.disabled = true;
+    if (currentData) load(); // refresh the current view in case it's now showing actual data
+  } catch (e) {
+    results.innerHTML = `<div class="empty-state">Could not reach the API — try again.</div>`;
+    usageSubmitBtn.disabled = false;
+  }
+};
+
+function renderUsageResults(data) {
+  const results = document.getElementById("usageResults");
+  const warningsHtml = data.warnings.length
+    ? `<div class="tariff-panel-note" style="color:var(--copper); margin-top:10px;">${data.warnings.join(" ")}</div>`
+    : "";
+  results.innerHTML = `
+    <div class="tariff-bands">
+      <div class="tariff-band-card">
+        <div class="tariff-band-name">Rows parsed</div>
+        <div class="tariff-retail-price">${data.rows_parsed}</div>
+      </div>
+      <div class="tariff-band-card">
+        <div class="tariff-band-name">New / Updated</div>
+        <div class="tariff-retail-price">${data.rows_inserted} <span style="font-size:14px; color:var(--text-3);">/ ${data.rows_updated}</span></div>
+      </div>
+      <div class="tariff-band-card">
+        <div class="tariff-band-name">Date range</div>
+        <div class="tariff-retail-price" style="font-size:15px;">${data.date_range_start} → ${data.date_range_end}</div>
+      </div>
+    </div>
+    ${warningsHtml}
+    <div class="tariff-blended">These dates now use actual usage on the dashboard — reopen the Daily view for any date in this range to see it reflected.</div>
+  `;
+}
 
 document.getElementById("tariffCalcBtn").onclick = async () => {
   const start = tariffFrom.value, end = tariffTo.value;

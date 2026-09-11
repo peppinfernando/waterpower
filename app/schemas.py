@@ -131,3 +131,12 @@ class TariffResponse(BaseModel):
     network_charge_eur_per_kwh: float
     pso_levy_eur_per_month_excl_vat: float
     pso_levy_eur_per_month_incl_vat: float
+
+
+class UsageUploadResponse(BaseModel):
+    rows_parsed: int
+    rows_inserted: int
+    rows_updated: int
+    date_range_start: Optional[str] = None
+    date_range_end: Optional[str] = None
+    warnings: List[str] = []

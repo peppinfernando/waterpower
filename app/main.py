@@ -16,7 +16,7 @@ from app import auth
 from app.database import Base, engine, session_scope, get_db
 from app.ingestion.sem_o_client import get_client
 from app.models import SettlementPrice
-from app.routers import costs, tariff
+from app.routers import costs, tariff, usage
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("energy-cost-platform")
@@ -89,6 +89,7 @@ app.add_middleware(SessionMiddleware, secret_key=auth.SESSION_SECRET, same_site=
 
 app.include_router(costs.router)
 app.include_router(tariff.router)
+app.include_router(usage.router)
 
 
 @app.get("/api/health")
