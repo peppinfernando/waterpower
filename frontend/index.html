@@ -427,6 +427,13 @@
               <span class="tools-dropdown-item-sub">Replace estimated volumes with actual metered usage</span>
             </span>
           </button>
+          <button class="tools-dropdown-item" id="customerReportBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18M7 14l4-4 3 3 5-5"/></svg>
+            <span>
+              <span class="tools-dropdown-item-title">Customer tariff report</span>
+              <span class="tools-dropdown-item-sub">What we'd have charged, from their real meter data</span>
+            </span>
+          </button>
           <button class="tools-dropdown-item" id="brandPreviewBtn">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             <span>
@@ -621,6 +628,71 @@
     </div>
 
     <div id="usageResults"></div>
+  </div>
+
+  <div class="tariff-panel" id="customerReportPanel" style="display:none">
+    <div class="tariff-panel-header">
+      <h2>Customer tariff report</h2>
+      <button class="icon-btn" id="customerReportCloseBtn" aria-label="Close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <p class="tariff-panel-sub">Upload a customer's real meter data (15-minute MPRN export) and see what we'd have charged them — matched against real wholesale settlement prices, with your margin, network charge, PSO levy, and VAT applied on top.</p>
+    <p class="tariff-panel-note">Expected format: the standard MPRN export — a short header block (MPRN, Profile Description, UoM) followed by a Date / Time / Value / Status table. Readings in kW are automatically converted to kWh (energy) using the interval length; readings already in kWh are used as-is. You can upload a different file at any time to replace the current one.</p>
+
+    <div class="controls">
+      <input type="file" id="customerReportFileInput" accept=".xlsx,.xls" style="font-size:13px;">
+      <button class="btn btn-primary" id="customerReportUploadBtn" disabled>Upload</button>
+    </div>
+
+    <div id="customerReportStatus"></div>
+
+    <div id="customerReportBody" style="display:none;">
+      <div class="controls" style="margin-top:18px;">
+        <label>Network charge <input type="number" id="crNetwork" value="0" min="0" step="0.001" style="width:72px;"> €/kWh</label>
+        <label>Target margin <input type="number" id="crMargin" value="20" min="0" step="1" style="width:60px;"> %</label>
+        <label>PSO levy <input type="number" id="crPso" value="0.51" min="0" step="0.01" style="width:72px;"> €/month</label>
+        <label>VAT <input type="number" id="crVat" value="9" min="0" step="0.1" style="width:60px;"> %</label>
+        <button class="btn btn-primary" id="crRecalcBtn">Recalculate</button>
+      </div>
+
+      <div class="table-card" style="margin-top:18px;">
+        <div class="tariff-panel-header" style="margin-bottom:10px;">
+          <h2 style="font-size:17px;">Monthly summary — all 9 months</h2>
+          <button class="btn" id="crDownloadBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16"/></svg>
+            Download Excel
+          </button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr><th>Month</th><th>Consumption (kWh)</th><th>Avg wholesale (€/MWh)</th><th>Buying cost (€)</th><th>Tariff, excl. VAT (€)</th><th>Tariff, incl. VAT (€)</th></tr></thead>
+            <tbody id="crMonthlyBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <h2 style="font-size:17px;">Hours by price band</h2>
+        <div class="controls" style="margin-top:0;">
+          <label>Period
+            <select id="crPeriodSelect">
+              <option value="all" selected>All 9 months</option>
+            </select>
+          </label>
+          <label>Custom range <input type="date" id="crRangeFrom"></label>
+          <label>to <input type="date" id="crRangeTo"></label>
+          <button class="btn" id="crPeriodApplyBtn">Apply range</button>
+        </div>
+        <div id="crPeriodSummary" class="tariff-blended" style="margin-top:14px;"></div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr><th>Band</th><th>Hours</th><th>Consumption (kWh)</th><th>Buying cost (€)</th></tr></thead>
+            <tbody id="crBandBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 
   <footer class="app-footer">
@@ -1442,6 +1514,242 @@ function renderUsageResults(data) {
     <div class="tariff-blended">These dates now use actual usage on the dashboard — reopen the Daily view for any date in this range to see it reflected.</div>
   `;
 }
+
+/* ---------- Customer tariff report ---------- */
+const customerReportPanel = document.getElementById("customerReportPanel");
+let crReportData = null; // { mprn, profile_description, days } from the last successful upload
+
+document.getElementById("customerReportBtn").onclick = () => {
+  const opening = customerReportPanel.style.display === "none";
+  customerReportPanel.style.display = opening ? "block" : "none";
+  if (opening) customerReportPanel.scrollIntoView && customerReportPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  closeToolsMenu();
+};
+document.getElementById("customerReportCloseBtn").onclick = () => { customerReportPanel.style.display = "none"; };
+
+const crFileInput = document.getElementById("customerReportFileInput");
+const crUploadBtn = document.getElementById("customerReportUploadBtn");
+crFileInput.onchange = () => { crUploadBtn.disabled = !crFileInput.files.length; };
+
+crUploadBtn.onclick = async () => {
+  const file = crFileInput.files[0];
+  const status = document.getElementById("customerReportStatus");
+  if (!file) return;
+
+  crUploadBtn.disabled = true;
+  status.innerHTML = `<div class="empty-state">Uploading and matching against wholesale prices — this can take a moment for 9 months of 15-minute data…</div>`;
+  document.getElementById("customerReportBody").style.display = "none";
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const res = await fetch(`${API_BASE}/api/customer-report/upload`, { method: "POST", body: formData });
+    if (res.status === 401) { window.location.href = "/login"; return; }
+    const data = await res.json();
+    if (!res.ok) {
+      status.innerHTML = `<div class="empty-state">${data.detail || "Upload failed — check the file format."}</div>`;
+      crUploadBtn.disabled = false;
+      return;
+    }
+    crReportData = data;
+    const warningsHtml = data.warnings.length
+      ? `<div class="tariff-panel-note" style="color:var(--copper);">${data.warnings.join(" ")}</div>`
+      : "";
+    status.innerHTML = `
+      <div class="tariff-blended" style="margin-top:14px;">
+        <strong>${data.profile_description || data.mprn || "Customer"}</strong>${data.mprn ? ` · MPRN ${data.mprn}` : ""} · ${data.days.length} day(s) loaded
+      </div>
+      ${warningsHtml}
+    `;
+    crPopulatePeriodSelect(data.days);
+    document.getElementById("customerReportBody").style.display = "block";
+    crRecalculateAll();
+    crFileInput.value = "";
+    crUploadBtn.disabled = true;
+  } catch (e) {
+    status.innerHTML = `<div class="empty-state">Could not reach the API — try again.</div>`;
+    crUploadBtn.disabled = false;
+  }
+};
+
+function crPopulatePeriodSelect(days) {
+  const months = [...new Set(days.map(d => d.date.slice(0, 7)))].sort();
+  const select = document.getElementById("crPeriodSelect");
+  select.innerHTML = `<option value="all">All 9 months</option>` +
+    months.map(m => `<option value="${m}">${m}</option>`).join("");
+  if (months.length) {
+    document.getElementById("crRangeFrom").value = days[0].date;
+    document.getElementById("crRangeTo").value = days[days.length - 1].date;
+  }
+}
+
+// Shared tariff math — mirrors the standalone Tariff calculator's own
+// logic (energy + margin, then network charge, then VAT; PSO kept as its
+// own flat line rather than blended into the per-kWh rate, since that's
+// not how it actually works) so the two tools agree with each other.
+function crComputeTariff(consumptionKwh, buyingCostEur, network, marginPct, vatPct, monthsSpanned, psoMonthly) {
+  if (!consumptionKwh) {
+    return { energyExclVat: 0, energyInclVat: 0, psoExclVat: psoMonthly * monthsSpanned, psoInclVat: psoMonthly * monthsSpanned * (1 + vatPct / 100), totalExclVat: 0, totalInclVat: 0 };
+  }
+  const blended = buyingCostEur / consumptionKwh;
+  const energyPlusMargin = blended * (1 + marginPct / 100);
+  const retailExclVat = energyPlusMargin + network;
+  const retailInclVat = retailExclVat * (1 + vatPct / 100);
+  const energyExclVat = retailExclVat * consumptionKwh;
+  const energyInclVat = retailInclVat * consumptionKwh;
+  const psoExclVat = psoMonthly * monthsSpanned;
+  const psoInclVat = psoExclVat * (1 + vatPct / 100);
+  return {
+    energyExclVat, energyInclVat, psoExclVat, psoInclVat,
+    totalExclVat: energyExclVat + psoExclVat,
+    totalInclVat: energyInclVat + psoInclVat,
+  };
+}
+
+function crReadInputs() {
+  return {
+    network: parseFloat(document.getElementById("crNetwork").value) || 0,
+    margin: parseFloat(document.getElementById("crMargin").value) || 0,
+    pso: parseFloat(document.getElementById("crPso").value) || 0,
+    vat: parseFloat(document.getElementById("crVat").value) || 0,
+  };
+}
+
+function crRenderMonthlyTable() {
+  if (!crReportData) return;
+  const { network, margin, pso, vat } = crReadInputs();
+  const byMonth = {};
+  for (const d of crReportData.days) {
+    const m = d.date.slice(0, 7);
+    const bucket = byMonth[m] || (byMonth[m] = { consumption: 0, cost: 0 });
+    bucket.consumption += d.consumption_kwh;
+    bucket.cost += d.buying_cost_eur;
+  }
+  const months = Object.keys(byMonth).sort();
+  document.getElementById("crMonthlyBody").innerHTML = months.map(m => {
+    const b = byMonth[m];
+    const avgPrice = b.consumption ? (b.cost / b.consumption * 1000) : 0;
+    const t = crComputeTariff(b.consumption, b.cost, network, margin, vat, 1, pso);
+    return `<tr>
+      <td>${m}</td>
+      <td>${b.consumption.toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
+      <td>€${avgPrice.toFixed(2)}</td>
+      <td>€${b.cost.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
+      <td>€${t.totalExclVat.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
+      <td>€${t.totalInclVat.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
+    </tr>`;
+  }).join("");
+}
+
+function crSelectedDays() {
+  if (!crReportData) return [];
+  const period = document.getElementById("crPeriodSelect").value;
+  if (period === "all") return crReportData.days;
+  if (period === "custom") {
+    const from = document.getElementById("crRangeFrom").value;
+    const to = document.getElementById("crRangeTo").value;
+    return crReportData.days.filter(d => d.date >= from && d.date <= to);
+  }
+  return crReportData.days.filter(d => d.date.startsWith(period)); // a specific "YYYY-MM"
+}
+
+function crRenderBandBreakdown() {
+  if (!crReportData) return;
+  const { network, margin, pso, vat } = crReadInputs();
+  const days = crSelectedDays();
+  const bandNames = ["night", "day", "peak"];
+  const totals = Object.fromEntries(bandNames.map(n => [n, { hours: 0, consumption: 0, cost: 0 }]));
+  let totalConsumption = 0, totalCost = 0;
+  const monthsSpanned = new Set();
+
+  for (const d of days) {
+    monthsSpanned.add(d.date.slice(0, 7));
+    totalConsumption += d.consumption_kwh;
+    totalCost += d.buying_cost_eur;
+    for (const name of bandNames) {
+      const b = d.bands[name];
+      if (!b) continue;
+      totals[name].hours += b.hours;
+      totals[name].consumption += b.consumption_kwh;
+      totals[name].cost += b.buying_cost_eur;
+    }
+  }
+
+  document.getElementById("crBandBody").innerHTML = bandNames.map(name => {
+    const b = totals[name];
+    return `<tr>
+      <td style="text-transform:capitalize;">${name}</td>
+      <td>${b.hours.toLocaleString(undefined, {maximumFractionDigits: 1})}</td>
+      <td>${b.consumption.toLocaleString(undefined, {maximumFractionDigits: 0})}</td>
+      <td>€${b.cost.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
+    </tr>`;
+  }).join("");
+
+  const t = crComputeTariff(totalConsumption, totalCost, network, margin, vat, Math.max(monthsSpanned.size, 1), pso);
+  const periodLabel = days.length ? `${days[0].date} to ${days[days.length - 1].date} (${days.length} day${days.length === 1 ? "" : "s"})` : "No data for this period";
+  document.getElementById("crPeriodSummary").innerHTML = days.length ? `
+    ${periodLabel} · Consumption: ${totalConsumption.toLocaleString(undefined, {maximumFractionDigits: 0})} kWh ·
+    Buying cost: €${totalCost.toLocaleString(undefined, {maximumFractionDigits: 2})} ·
+    Tariff (excl. VAT): €${t.totalExclVat.toLocaleString(undefined, {maximumFractionDigits: 2})} ·
+    Tariff (incl. VAT): €${t.totalInclVat.toLocaleString(undefined, {maximumFractionDigits: 2})}
+    <span style="color:var(--text-3);">(PSO levy €${t.psoInclVat.toFixed(2)} for ${monthsSpanned.size} month(s), included above)</span>
+  ` : periodLabel;
+}
+
+function crRecalculateAll() {
+  crRenderMonthlyTable();
+  crRenderBandBreakdown();
+}
+
+document.getElementById("crRecalcBtn").onclick = crRecalculateAll;
+document.getElementById("crPeriodSelect").onchange = () => {
+  if (document.getElementById("crPeriodSelect").value !== "all") {
+    // keep custom-range inputs visually in sync but they're only used when "custom" is explicitly chosen below
+  }
+  crRenderBandBreakdown();
+};
+document.getElementById("crPeriodApplyBtn").onclick = () => {
+  document.getElementById("crPeriodSelect").value = "custom";
+  // Ensure "custom" is a real selectable option so crSelectedDays() picks the range branch
+  if (!document.getElementById("crPeriodSelect").querySelector('option[value="custom"]')) {
+    document.getElementById("crPeriodSelect").insertAdjacentHTML("beforeend", '<option value="custom">Custom range</option>');
+    document.getElementById("crPeriodSelect").value = "custom";
+  }
+  crRenderBandBreakdown();
+};
+
+document.getElementById("crDownloadBtn").onclick = () => {
+  if (!crReportData) return;
+  const { network, margin, pso, vat } = crReadInputs();
+  const byMonth = {};
+  for (const d of crReportData.days) {
+    const m = d.date.slice(0, 7);
+    const bucket = byMonth[m] || (byMonth[m] = { consumption: 0, cost: 0 });
+    bucket.consumption += d.consumption_kwh;
+    bucket.cost += d.buying_cost_eur;
+  }
+  const months = Object.keys(byMonth).sort();
+  const rows = months.map(m => {
+    const b = byMonth[m];
+    const avgPrice = b.consumption ? (b.cost / b.consumption * 1000) : 0;
+    const t = crComputeTariff(b.consumption, b.cost, network, margin, vat, 1, pso);
+    return {
+      Month: m,
+      "Consumption (kWh)": Math.round(b.consumption * 100) / 100,
+      "Avg wholesale (EUR/MWh)": Math.round(avgPrice * 100) / 100,
+      "Buying cost (EUR)": Math.round(b.cost * 100) / 100,
+      "Tariff excl. VAT (EUR)": Math.round(t.totalExclVat * 100) / 100,
+      "Tariff incl. VAT (EUR)": Math.round(t.totalInclVat * 100) / 100,
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{wch:10},{wch:16},{wch:18},{wch:16},{wch:18},{wch:18}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Monthly tariff");
+  const mprnLabel = (crReportData.mprn || "customer").replace(/[^a-zA-Z0-9]/g, "");
+  XLSX.writeFile(wb, `customer-tariff-report-${mprnLabel}.xlsx`);
+};
 
 document.getElementById("tariffCalcBtn").onclick = async () => {
   const start = tariffFrom.value, end = tariffTo.value;

@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 
@@ -139,4 +139,25 @@ class UsageUploadResponse(BaseModel):
     rows_updated: int
     date_range_start: Optional[str] = None
     date_range_end: Optional[str] = None
+    warnings: List[str] = []
+
+
+class CustomerReportBand(BaseModel):
+    hours: float
+    consumption_kwh: float
+    buying_cost_eur: float
+
+
+class CustomerReportDay(BaseModel):
+    date: str
+    consumption_kwh: float
+    buying_cost_eur: float
+    avg_wholesale_price_eur_per_mwh: Optional[float] = None
+    bands: Dict[str, CustomerReportBand]
+
+
+class CustomerReportResponse(BaseModel):
+    mprn: Optional[str] = None
+    profile_description: Optional[str] = None
+    days: List[CustomerReportDay]
     warnings: List[str] = []
