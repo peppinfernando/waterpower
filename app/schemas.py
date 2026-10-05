@@ -158,6 +158,7 @@ class CustomerReportHalfHour(BaseModel):
 class CustomerReportDay(BaseModel):
     date: str
     consumption_kwh: float
+    priced_consumption_kwh: float
     buying_cost_eur: float
     avg_wholesale_price_eur_per_mwh: Optional[float] = None
     bands: Dict[str, CustomerReportBand]
@@ -167,5 +168,6 @@ class CustomerReportDay(BaseModel):
 class CustomerReportResponse(BaseModel):
     mprn: Optional[str] = None
     profile_description: Optional[str] = None
+    prices_are_simulated: bool = False
     days: List[CustomerReportDay]
     warnings: List[str] = []

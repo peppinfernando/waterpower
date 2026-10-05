@@ -84,6 +84,7 @@
   .note { font-size: 12.5px; color: var(--text-3); margin-top: 10px; }
 
   .band-table-row td:first-child { text-transform: capitalize; }
+  .banner { background: var(--copper-2); color: var(--copper); border-radius: var(--radius); padding: 12px 16px; font-size: 13.5px; margin-bottom: 16px; line-height: 1.6; }
 
   @media (max-width: 700px) {
     .tabs { overflow-x: auto; }
@@ -119,8 +120,8 @@
 
   <div class="card">
     <div class="controls">
-      <label>Meter data file (.xlsx)
-        <input type="file" id="fileInput" accept=".xlsx,.xls">
+      <label>Original meter data file (.xlsx)
+        <input type="file" id="fileInput" accept=".xlsx">
       </label>
       <button class="btn-primary" id="uploadBtn" disabled>Upload</button>
     </div>
@@ -142,6 +143,8 @@
       </div>
     </div>
 
+    <div id="coverageBanner"></div>
+
     <div class="tabs">
       <button class="tab-btn active" data-tab="all">All 9 months</button>
       <button class="tab-btn" data-tab="monthly">Monthly</button>
@@ -152,7 +155,7 @@
     <div class="tab-panel active" id="panel-all">
       <div class="stat-cards" id="allStatCards"></div>
       <div class="card"><div class="chart-wrap"><canvas id="allChart"></canvas></div></div>
-      <div class="card"><div class="table-scroll"><table><thead><tr><th>Month</th><th>Consumption (kWh)</th><th>Avg wholesale (€/MWh)</th><th>Buying cost (€)</th><th>Tariff excl. VAT (€)</th><th>Tariff incl. VAT (€)</th></tr></thead><tbody id="allTableBody"></tbody></table></div></div>
+      <div class="card"><div class="table-scroll"><table><thead><tr><th>Month</th><th>Consumption (kWh)</th><th>Price coverage</th><th>Avg wholesale (€/MWh)</th><th>Buying cost (€)</th><th>Tariff excl. VAT (€)</th><th>Tariff incl. VAT (€)</th></tr></thead><tbody id="allTableBody"></tbody></table></div></div>
       <div class="card explainer" id="allExplainer"></div>
     </div>
 
@@ -162,7 +165,7 @@
       </div>
       <div class="stat-cards" id="monthlyStatCards"></div>
       <div class="card"><div class="chart-wrap"><canvas id="monthlyChart"></canvas></div></div>
-      <div class="card"><div class="table-scroll"><table><thead><tr><th>Date</th><th>Consumption (kWh)</th><th>Avg wholesale (€/MWh)</th><th>Buying cost (€)</th></tr></thead><tbody id="monthlyTableBody"></tbody></table></div></div>
+      <div class="card"><div class="table-scroll"><table><thead><tr><th>Date</th><th>Consumption (kWh)</th><th>Price coverage</th><th>Avg wholesale (€/MWh)</th><th>Buying cost (€)</th></tr></thead><tbody id="monthlyTableBody"></tbody></table></div></div>
       <div class="card explainer" id="monthlyExplainer"></div>
     </div>
 
@@ -184,7 +187,7 @@
       </div>
       <div class="stat-cards" id="customStatCards"></div>
       <div class="card"><div class="chart-wrap"><canvas id="customChart"></canvas></div></div>
-      <div class="card"><div class="table-scroll"><table><thead><tr><th>Date</th><th>Consumption (kWh)</th><th>Avg wholesale (€/MWh)</th><th>Buying cost (€)</th></tr></thead><tbody id="customTableBody"></tbody></table></div></div>
+      <div class="card"><div class="table-scroll"><table><thead><tr><th>Date</th><th>Consumption (kWh)</th><th>Price coverage</th><th>Avg wholesale (€/MWh)</th><th>Buying cost (€)</th></tr></thead><tbody id="customTableBody"></tbody></table></div></div>
       <div class="card explainer" id="customExplainer"></div>
     </div>
 
@@ -192,6 +195,7 @@
       <h2 style="font-size:17px; margin-bottom:14px;">Hours by price band</h2>
       <p class="note" style="margin-top:0; margin-bottom:14px;">Reflects whichever tab and selection is currently active above.</p>
       <div class="table-scroll"><table><thead><tr><th>Band</th><th>Hours</th><th>Consumption (kWh)</th><th>Buying cost (€)</th></tr></thead><tbody id="bandTableBody"></tbody></table></div>
+      <p class="note" id="bandNote"></p>
     </div>
   </div>
 </div>
@@ -237,9 +241,14 @@ uploadBtn.onclick = async () => {
   let data;
   try {
     const res = await apiFetch(`${API_BASE}/api/customer-report/upload`, { method: "POST", body: formData });
-    data = await res.json();
-    if (!res.ok) {
-      status.innerHTML = `<div class="empty-state">${data.detail || "Upload failed — check the file format."}</div>`;
+    // Read as text first: a server crash returns plain text, not JSON, and
+    // calling res.json() on that would throw and be misreported below as a
+    // network failure when the server was in fact reached.
+    const raw = await res.text();
+    try { data = JSON.parse(raw); } catch (e) { data = null; }
+    if (!res.ok || !data) {
+      const detail = data && data.detail ? data.detail : `The server returned an error (HTTP ${res.status}) — check the file is the original meter data export (.xlsx).`;
+      status.innerHTML = `<div class="empty-state">${detail}</div>`;
       uploadBtn.disabled = false;
       return;
     }
@@ -256,6 +265,9 @@ uploadBtn.onclick = async () => {
   reportData = data;
   const warningsHtml = data.warnings.length ? `<p class="note" style="color:var(--copper);">${data.warnings.join(" ")}</p>` : "";
   status.innerHTML = `<p class="note" style="margin-top:12px;"><strong>${data.profile_description || data.mprn || "Customer"}</strong>${data.mprn ? ` · MPRN ${data.mprn}` : ""} · ${data.days.length} day(s) loaded</p>${warningsHtml}`;
+  if (data.prices_are_simulated) {
+    status.innerHTML += `<p class="note" style="color:var(--copper);">Note: the wholesale prices in this system are currently simulated (illustrative), not live SEM-O settlement data.</p>`;
+  }
   try {
     initSelectors();
     document.getElementById("reportBody").style.display = "block";
@@ -303,6 +315,41 @@ function computeTariff(consumptionKwh, buyingCostEur, network, marginPct, vatPct
 function fmtEur(n) { return "€" + (n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 }); }
 function fmtKwh(n) { return (n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 }); }
 
+// A period's price coverage: how much of its usage actually has a wholesale
+// price. A tariff built on partial pricing would understate buying cost (the
+// unpriced usage counts as free), so periods below full coverage show a
+// warning instead of a tariff.
+const FULL_COVERAGE = 0.999999;
+function pricedOf(d) { return d.priced_consumption_kwh !== undefined ? d.priced_consumption_kwh : d.consumption_kwh; }
+function periodStats(days) {
+  const consumption = days.reduce((a, d) => a + d.consumption_kwh, 0);
+  const priced = days.reduce((a, d) => a + pricedOf(d), 0);
+  const cost = days.reduce((a, d) => a + d.buying_cost_eur, 0);
+  const coverage = consumption ? priced / consumption : 1;
+  return { consumption, priced, cost, coverage, complete: coverage >= FULL_COVERAGE, avgPrice: priced ? cost / priced * 1000 : null };
+}
+function fmtPct(c) { return (c * 100).toFixed(1) + "%"; }
+function coverageCell(st) {
+  return st.complete ? `<td>${fmtPct(st.coverage)}</td>` : `<td style="color:var(--copper); font-weight:600;">${fmtPct(st.coverage)} ⚠</td>`;
+}
+function fmtAvg(st) { return st.avgPrice === null ? "—" : fmtEur(st.avgPrice); }
+function monthRows() {
+  const byMonth = {};
+  for (const d of reportData.days) { const m = d.date.slice(0, 7); (byMonth[m] = byMonth[m] || []).push(d); }
+  return Object.keys(byMonth).sort().map(m => ({ month: m, days: byMonth[m], s: periodStats(byMonth[m]) }));
+}
+function incompleteExplainer(st, label) {
+  return `<h3>Tariff not calculated for ${label}</h3>
+    <p>Only ${fmtPct(st.coverage)} of the usage in this period (${fmtKwh(st.priced)} of ${fmtKwh(st.consumption)} kWh) has a wholesale settlement price in the system. A tariff built on partial pricing would understate the buying cost, so none is shown. Load the missing prices, then upload the file again.</p>
+    ${st.priced ? `<p class="note">For reference, the priced part alone cost ${fmtEur(st.cost)}, an average of ${fmtEur(st.avgPrice)}/MWh.</p>` : ""}`;
+}
+function renderCoverageBanner() {
+  const bad = monthRows().filter(r => !r.s.complete);
+  document.getElementById("coverageBanner").innerHTML = bad.length
+    ? `<div class="banner"><strong>Wholesale prices are missing for part of this data:</strong> ${bad.map(r => `${r.month} (${fmtPct(r.s.coverage)} priced)`).join(", ")}. Tariffs for those months are not shown, rather than shown too low. Load the missing prices and upload the file again.</div>`
+    : "";
+}
+
 function renderBandTable(days) {
   const bandNames = ["night", "day", "peak"];
   const totals = Object.fromEntries(bandNames.map(n => [n, { hours: 0, consumption: 0, cost: 0 }]));
@@ -319,6 +366,8 @@ function renderBandTable(days) {
     const b = totals[name];
     return `<tr class="band-table-row"><td>${name}</td><td>${b.hours.toLocaleString(undefined,{maximumFractionDigits:1})}</td><td>${fmtKwh(b.consumption)}</td><td>${fmtEur(b.cost)}</td></tr>`;
   }).join("");
+  const st = periodStats(days);
+  document.getElementById("bandNote").textContent = st.complete ? "" : `Buying cost covers priced usage only (${fmtPct(st.coverage)} of this period's usage).`;
 }
 
 /* ---------- Tabs ---------- */
@@ -336,6 +385,7 @@ function switchToTab(tab) {
 }
 function renderActiveTab() {
   if (!reportData) return;
+  renderCoverageBanner();
   if (activeTab === "all") renderAll();
   else if (activeTab === "monthly") renderMonthly();
   else if (activeTab === "daily") renderDaily();
@@ -346,100 +396,96 @@ document.getElementById("recalcBtn").onclick = renderActiveTab;
 /* ---------- All 9 months ---------- */
 function renderAll() {
   const { network, margin, pso, vat } = readInputs();
-  const byMonth = {};
-  for (const d of reportData.days) {
-    const m = d.date.slice(0, 7);
-    const b = byMonth[m] || (byMonth[m] = { consumption: 0, cost: 0 });
-    b.consumption += d.consumption_kwh;
-    b.cost += d.buying_cost_eur;
-  }
-  const months = Object.keys(byMonth).sort();
-  const rows = months.map(m => {
-    const b = byMonth[m];
-    const avgPrice = b.consumption ? (b.cost / b.consumption * 1000) : 0;
-    const t = computeTariff(b.consumption, b.cost, network, margin, vat, 1, pso);
-    return { month: m, ...b, avgPrice, t };
-  });
+  const rows = monthRows().map(r => ({ ...r, t: r.s.complete ? computeTariff(r.s.consumption, r.s.cost, network, margin, vat, 1, pso) : null }));
 
   document.getElementById("allTableBody").innerHTML = rows.map(r => `
     <tr class="clickable" onclick="document.getElementById('monthSelect').value='${r.month}'; switchToTab('monthly'); renderMonthly();">
-      <td>${r.month}</td><td>${fmtKwh(r.consumption)}</td><td>${fmtEur(r.avgPrice)}</td><td>${fmtEur(r.cost)}</td><td>${fmtEur(r.t.totalExclVat)}</td><td>${fmtEur(r.t.totalInclVat)}</td>
+      <td>${r.month}</td><td>${fmtKwh(r.s.consumption)}</td>${coverageCell(r.s)}<td>${fmtAvg(r.s)}</td><td>${fmtEur(r.s.cost)}</td>
+      ${r.t ? `<td>${fmtEur(r.t.totalExclVat)}</td><td>${fmtEur(r.t.totalInclVat)}</td>` : `<td colspan="2" style="color:var(--copper); font-family:'Inter',sans-serif;">Incomplete prices</td>`}
     </tr>`).join("");
 
-  const totalConsumption = rows.reduce((s, r) => s + r.consumption, 0);
-  const totalCost = rows.reduce((s, r) => s + r.cost, 0);
-  const blendedPrice = totalConsumption ? totalCost / totalConsumption * 1000 : 0;
-  const highest = rows.reduce((a, b) => b.cost > a.cost ? b : a, rows[0]);
-  const lowest = rows.reduce((a, b) => b.cost < a.cost ? b : a, rows[0]);
-  const periodTotal = computeTariff(totalConsumption, totalCost, network, margin, vat, months.length, pso);
+  const all = periodStats(reportData.days);
+  const complete = rows.filter(r => r.s.complete);
+  const highest = complete.length ? complete.reduce((a, b) => b.s.cost > a.s.cost ? b : a) : null;
+  const lowest = complete.length ? complete.reduce((a, b) => b.s.cost < a.s.cost ? b : a) : null;
+  const periodTotal = all.complete ? computeTariff(all.consumption, all.cost, network, margin, vat, rows.length, pso) : null;
 
   document.getElementById("allStatCards").innerHTML = `
-    <div class="stat-card"><div class="stat-label">Highest-cost month</div><div class="stat-value">${highest.month}</div><div class="stat-meta">${fmtEur(highest.cost)}</div></div>
-    <div class="stat-card"><div class="stat-label">Lowest-cost month</div><div class="stat-value">${lowest.month}</div><div class="stat-meta">${fmtEur(lowest.cost)}</div></div>
-    <div class="stat-card"><div class="stat-label">Avg wholesale price</div><div class="stat-value">${fmtEur(blendedPrice)}/MWh</div></div>
-    <div class="stat-card"><div class="stat-label">Total consumption</div><div class="stat-value">${fmtKwh(totalConsumption)} kWh</div></div>
+    <div class="stat-card"><div class="stat-label">Highest-cost month</div><div class="stat-value">${highest ? highest.month : "—"}</div><div class="stat-meta">${highest ? fmtEur(highest.s.cost) : "fully priced months only"}</div></div>
+    <div class="stat-card"><div class="stat-label">Lowest-cost month</div><div class="stat-value">${lowest ? lowest.month : "—"}</div><div class="stat-meta">${lowest ? fmtEur(lowest.s.cost) : "fully priced months only"}</div></div>
+    <div class="stat-card"><div class="stat-label">Avg wholesale price${all.complete ? "" : " (priced usage)"}</div><div class="stat-value">${all.avgPrice === null ? "—" : fmtEur(all.avgPrice) + "/MWh"}</div></div>
+    <div class="stat-card"><div class="stat-label">Total consumption</div><div class="stat-value">${fmtKwh(all.consumption)} kWh</div></div>
+    <div class="stat-card"><div class="stat-label">Price coverage</div><div class="stat-value"${all.complete ? "" : ' style="color:var(--copper)"'}>${fmtPct(all.coverage)}</div></div>
   `;
 
-  renderBarChart("allChart", rows.map(r => r.month), rows.map(r => r.cost), (idx) => { document.getElementById("monthSelect").value = rows[idx].month; switchToTab("monthly"); renderMonthly(); });
+  renderBarChart("allChart", rows.map(r => r.month), rows.map(r => r.s.complete ? r.s.cost : null), (idx) => { document.getElementById("monthSelect").value = rows[idx].month; switchToTab("monthly"); renderMonthly(); });
 
-  document.getElementById("allExplainer").innerHTML = `
+  document.getElementById("allExplainer").innerHTML = periodTotal ? `
     <h3>How this total was calculated</h3>
     <p>
-      Buying cost = sum of (usage kWh × wholesale price ÷ 1000) across every 30-minute interval in all 9 months = ${fmtEur(totalCost)}<br>
-      Blended wholesale rate = ${fmtEur(totalCost)} ÷ ${fmtKwh(totalConsumption)} kWh = ${fmtEur(blendedPrice)}/MWh<br>
+      Buying cost = sum of (usage kWh × wholesale price ÷ 1000) across every 30-minute interval in all ${rows.length} months = ${fmtEur(all.cost)}<br>
+      Blended wholesale rate = ${fmtEur(all.cost)} ÷ ${fmtKwh(all.consumption)} kWh = ${fmtEur(all.avgPrice)}/MWh<br>
       + margin (${margin}%) + network charge (€${network}/kWh) = €${periodTotal.retailExclVat.toFixed(4)}/kWh excl. VAT<br>
       + VAT (${vat}%) = €${periodTotal.retailInclVat.toFixed(4)}/kWh incl. VAT<br>
-      × ${fmtKwh(totalConsumption)} kWh = ${fmtEur(periodTotal.energyInclVat)} energy charge<br>
-      + PSO levy (€${pso}/month × ${months.length} months, incl. VAT) = ${fmtEur(periodTotal.psoInclVat)}<br>
+      × ${fmtKwh(all.consumption)} kWh = ${fmtEur(periodTotal.energyInclVat)} energy charge<br>
+      + PSO levy (€${pso}/month × ${rows.length} months, incl. VAT) = ${fmtEur(periodTotal.psoInclVat)}<br>
       = <span class="total">${fmtEur(periodTotal.totalInclVat)} total (incl. VAT)</span>
     </p>
-  `;
+  ` : incompleteExplainer(all, `all ${rows.length} months`);
   renderBandTable(reportData.days);
+}
+
+/* ---------- Shared by Monthly and Custom range ---------- */
+function renderDayPeriod(prefix, days, periodDesc, monthsSpanned) {
+  const { network, margin, pso, vat } = readInputs();
+  const short = prefix === "monthly";
+  document.getElementById(prefix + "TableBody").innerHTML = days.map(d => {
+    const ds = periodStats([d]);
+    return `<tr class="clickable" onclick="document.getElementById('daySelect').value='${d.date}'; switchToTab('daily'); renderDaily();">
+      <td>${d.date}</td><td>${fmtKwh(ds.consumption)}</td>${coverageCell(ds)}<td>${fmtAvg(ds)}</td><td>${fmtEur(ds.cost)}</td>
+    </tr>`;
+  }).join("");
+
+  const st = periodStats(days);
+  const completeDays = days.filter(d => periodStats([d]).complete);
+  const highest = completeDays.length ? completeDays.reduce((a, b) => b.buying_cost_eur > a.buying_cost_eur ? b : a) : null;
+  const lowest = completeDays.length ? completeDays.reduce((a, b) => b.buying_cost_eur < a.buying_cost_eur ? b : a) : null;
+  const label = d => short ? d.date.slice(8) : d.date;
+  const t = st.complete ? computeTariff(st.consumption, st.cost, network, margin, vat, monthsSpanned, pso) : null;
+
+  document.getElementById(prefix + "StatCards").innerHTML = `
+    <div class="stat-card"><div class="stat-label">Highest-cost day</div><div class="stat-value">${highest ? label(highest) : "—"}</div><div class="stat-meta">${highest ? fmtEur(highest.buying_cost_eur) : "fully priced days only"}</div></div>
+    <div class="stat-card"><div class="stat-label">Lowest-cost day</div><div class="stat-value">${lowest ? label(lowest) : "—"}</div><div class="stat-meta">${lowest ? fmtEur(lowest.buying_cost_eur) : "fully priced days only"}</div></div>
+    <div class="stat-card"><div class="stat-label">Avg wholesale price${st.complete ? "" : " (priced usage)"}</div><div class="stat-value">${st.avgPrice === null ? "—" : fmtEur(st.avgPrice) + "/MWh"}</div></div>
+    <div class="stat-card"><div class="stat-label">Total consumption</div><div class="stat-value">${fmtKwh(st.consumption)} kWh</div></div>
+    <div class="stat-card"><div class="stat-label">Price coverage</div><div class="stat-value"${st.complete ? "" : ' style="color:var(--copper)"'}>${fmtPct(st.coverage)}</div></div>
+  `;
+
+  const chartLabels = days.map(d => short ? d.date.slice(8) : d.date.slice(5));
+  const chartValues = days.map(d => periodStats([d]).complete ? d.buying_cost_eur : null);
+  renderBarChart(prefix + "Chart", chartLabels, chartValues, (idx) => { document.getElementById("daySelect").value = days[idx].date; switchToTab("daily"); renderDaily(); });
+
+  document.getElementById(prefix + "Explainer").innerHTML = t ? `
+    <h3>How this total was calculated</h3>
+    <p>
+      Buying cost = sum of (usage kWh × wholesale price ÷ 1000) across every 30-minute interval ${periodDesc} = ${fmtEur(st.cost)}<br>
+      Blended wholesale rate = ${fmtEur(st.cost)} ÷ ${fmtKwh(st.consumption)} kWh = ${fmtEur(st.avgPrice)}/MWh<br>
+      + margin (${margin}%) + network charge (€${network}/kWh) = €${t.retailExclVat.toFixed(4)}/kWh excl. VAT<br>
+      + VAT (${vat}%) = €${t.retailInclVat.toFixed(4)}/kWh incl. VAT<br>
+      × ${fmtKwh(st.consumption)} kWh = ${fmtEur(t.energyInclVat)} energy charge<br>
+      + PSO levy (€${pso}/month × ${monthsSpanned} month(s), incl. VAT) = ${fmtEur(t.psoInclVat)}<br>
+      = <span class="total">${fmtEur(t.totalInclVat)} total (incl. VAT)</span>
+    </p>
+  ` : incompleteExplainer(st, periodDesc.replace(/^(in|from) /, ""));
+  renderBandTable(days);
 }
 
 /* ---------- Monthly ---------- */
 function renderMonthly() {
-  const { network, margin, pso, vat } = readInputs();
   const month = document.getElementById("monthSelect").value;
   const days = reportData.days.filter(d => d.date.startsWith(month));
   if (!days.length) return;
-
-  document.getElementById("monthlyTableBody").innerHTML = days.map(d => {
-    const avgPrice = d.avg_wholesale_price_eur_per_mwh ?? 0;
-    return `<tr class="clickable" onclick="document.getElementById('daySelect').value='${d.date}'; switchToTab('daily'); renderDaily();">
-      <td>${d.date}</td><td>${fmtKwh(d.consumption_kwh)}</td><td>${fmtEur(avgPrice)}</td><td>${fmtEur(d.buying_cost_eur)}</td>
-    </tr>`;
-  }).join("");
-
-  const totalConsumption = days.reduce((s, d) => s + d.consumption_kwh, 0);
-  const totalCost = days.reduce((s, d) => s + d.buying_cost_eur, 0);
-  const blendedPrice = totalConsumption ? totalCost / totalConsumption * 1000 : 0;
-  const highest = days.reduce((a, b) => b.buying_cost_eur > a.buying_cost_eur ? b : a, days[0]);
-  const lowest = days.reduce((a, b) => b.buying_cost_eur < a.buying_cost_eur ? b : a, days[0]);
-  const t = computeTariff(totalConsumption, totalCost, network, margin, vat, 1, pso);
-
-  document.getElementById("monthlyStatCards").innerHTML = `
-    <div class="stat-card"><div class="stat-label">Highest-cost day</div><div class="stat-value">${highest.date.slice(8)}</div><div class="stat-meta">${fmtEur(highest.buying_cost_eur)}</div></div>
-    <div class="stat-card"><div class="stat-label">Lowest-cost day</div><div class="stat-value">${lowest.date.slice(8)}</div><div class="stat-meta">${fmtEur(lowest.buying_cost_eur)}</div></div>
-    <div class="stat-card"><div class="stat-label">Avg wholesale price</div><div class="stat-value">${fmtEur(blendedPrice)}/MWh</div></div>
-    <div class="stat-card"><div class="stat-label">Total consumption</div><div class="stat-value">${fmtKwh(totalConsumption)} kWh</div></div>
-  `;
-
-  renderBarChart("monthlyChart", days.map(d => d.date.slice(8)), days.map(d => d.buying_cost_eur), (idx) => { document.getElementById("daySelect").value = days[idx].date; switchToTab("daily"); renderDaily(); });
-
-  document.getElementById("monthlyExplainer").innerHTML = `
-    <h3>How this total was calculated</h3>
-    <p>
-      Buying cost = sum of (usage kWh × wholesale price ÷ 1000) across every 30-minute interval in ${month} = ${fmtEur(totalCost)}<br>
-      Blended wholesale rate = ${fmtEur(totalCost)} ÷ ${fmtKwh(totalConsumption)} kWh = ${fmtEur(blendedPrice)}/MWh<br>
-      + margin (${margin}%) + network charge (€${network}/kWh) = €${t.retailExclVat.toFixed(4)}/kWh excl. VAT<br>
-      + VAT (${vat}%) = €${t.retailInclVat.toFixed(4)}/kWh incl. VAT<br>
-      × ${fmtKwh(totalConsumption)} kWh = ${fmtEur(t.energyInclVat)} energy charge<br>
-      + PSO levy (€${pso}/month, incl. VAT) = ${fmtEur(t.psoInclVat)}<br>
-      = <span class="total">${fmtEur(t.totalInclVat)} total (incl. VAT)</span>
-    </p>
-  `;
-  renderBandTable(days);
+  renderDayPeriod("monthly", days, `in ${month}`, 1);
 }
 
 /* ---------- Daily ---------- */
@@ -448,6 +494,7 @@ function renderDaily() {
   const date = document.getElementById("daySelect").value;
   const day = reportData.days.find(d => d.date === date);
   if (!day) return;
+  const st = periodStats([day]);
 
   document.getElementById("dailyTableBody").innerHTML = day.half_hours.map(h => `
     <tr><td>${h.time}</td><td>${h.consumption_kwh.toLocaleString(undefined,{maximumFractionDigits:2})}</td><td>${h.price_eur_per_mwh !== null ? fmtEur(h.price_eur_per_mwh) : "—"}</td><td>${fmtEur(h.buying_cost_eur)}</td></tr>
@@ -456,36 +503,35 @@ function renderDaily() {
   const priced = day.half_hours.filter(h => h.price_eur_per_mwh !== null);
   const high = priced.length ? priced.reduce((a, b) => b.price_eur_per_mwh > a.price_eur_per_mwh ? b : a) : null;
   const low = priced.length ? priced.reduce((a, b) => b.price_eur_per_mwh < a.price_eur_per_mwh ? b : a) : null;
-  const avgPrice = day.avg_wholesale_price_eur_per_mwh ?? 0;
-  const t = computeTariff(day.consumption_kwh, day.buying_cost_eur, network, margin, vat, 0, 0);
+  const t = st.complete ? computeTariff(day.consumption_kwh, day.buying_cost_eur, network, margin, vat, 0, 0) : null;
 
   document.getElementById("dailyStatCards").innerHTML = `
     <div class="stat-card"><div class="stat-label">High price</div><div class="stat-value">${high ? fmtEur(high.price_eur_per_mwh) + "/MWh" : "—"}</div><div class="stat-meta">${high ? high.time : ""}</div></div>
     <div class="stat-card"><div class="stat-label">Low price</div><div class="stat-value">${low ? fmtEur(low.price_eur_per_mwh) + "/MWh" : "—"}</div><div class="stat-meta">${low ? low.time : ""}</div></div>
-    <div class="stat-card"><div class="stat-label">Avg price</div><div class="stat-value">${fmtEur(avgPrice)}/MWh</div></div>
+    <div class="stat-card"><div class="stat-label">Avg price</div><div class="stat-value">${st.avgPrice === null ? "—" : fmtEur(st.avgPrice) + "/MWh"}</div></div>
     <div class="stat-card"><div class="stat-label">Consumption</div><div class="stat-value">${fmtKwh(day.consumption_kwh)} kWh</div></div>
+    ${st.complete ? "" : `<div class="stat-card"><div class="stat-label">Price coverage</div><div class="stat-value" style="color:var(--copper)">${fmtPct(st.coverage)}</div></div>`}
   `;
 
-  renderBarChart("dailyChart", day.half_hours.map(h => h.time), day.half_hours.map(h => h.price_eur_per_mwh || 0), null);
+  renderBarChart("dailyChart", day.half_hours.map(h => h.time), day.half_hours.map(h => h.price_eur_per_mwh), null);
 
-  document.getElementById("dailyExplainer").innerHTML = `
+  document.getElementById("dailyExplainer").innerHTML = t ? `
     <h3>How this day's price was calculated</h3>
     <p>
       Buying cost = sum of (usage kWh × wholesale price ÷ 1000) across ${day.half_hours.length} half-hours = ${fmtEur(day.buying_cost_eur)}<br>
-      Blended wholesale rate for the day = ${fmtEur(day.buying_cost_eur)} ÷ ${fmtKwh(day.consumption_kwh)} kWh = ${fmtEur(avgPrice)}/MWh<br>
+      Blended wholesale rate for the day = ${fmtEur(day.buying_cost_eur)} ÷ ${fmtKwh(day.consumption_kwh)} kWh = ${fmtEur(st.avgPrice)}/MWh<br>
       + margin (${margin}%) + network charge (€${network}/kWh) = €${t.retailExclVat.toFixed(4)}/kWh excl. VAT<br>
       + VAT (${vat}%) = €${t.retailInclVat.toFixed(4)}/kWh incl. VAT<br>
       × ${fmtKwh(day.consumption_kwh)} kWh = <span class="total">${fmtEur(t.energyInclVat)} energy charge (incl. VAT)</span>
     </p>
     <p class="note">PSO levy isn't shown here — it's a flat monthly charge, not meaningful prorated to a single day. See it applied on the Monthly, Custom range, or All 9 months tabs.</p>
-  `;
+  ` : incompleteExplainer(st, date);
   renderBandTable([day]);
 }
 
 /* ---------- Custom range ---------- */
 document.getElementById("customApplyBtn").onclick = renderCustom;
 function renderCustom() {
-  const { network, margin, pso, vat } = readInputs();
   const from = document.getElementById("customFrom").value;
   const to = document.getElementById("customTo").value;
   const days = reportData.days.filter(d => d.date >= from && d.date <= to);
@@ -493,44 +539,8 @@ function renderCustom() {
     document.getElementById("customStatCards").innerHTML = `<div class="empty-state">No data for this range.</div>`;
     return;
   }
-
-  document.getElementById("customTableBody").innerHTML = days.map(d => {
-    const avgPrice = d.avg_wholesale_price_eur_per_mwh ?? 0;
-    return `<tr class="clickable" onclick="document.getElementById('daySelect').value='${d.date}'; switchToTab('daily'); renderDaily();">
-      <td>${d.date}</td><td>${fmtKwh(d.consumption_kwh)}</td><td>${fmtEur(avgPrice)}</td><td>${fmtEur(d.buying_cost_eur)}</td>
-    </tr>`;
-  }).join("");
-
-  const totalConsumption = days.reduce((s, d) => s + d.consumption_kwh, 0);
-  const totalCost = days.reduce((s, d) => s + d.buying_cost_eur, 0);
-  const blendedPrice = totalConsumption ? totalCost / totalConsumption * 1000 : 0;
-  const highest = days.reduce((a, b) => b.buying_cost_eur > a.buying_cost_eur ? b : a, days[0]);
-  const lowest = days.reduce((a, b) => b.buying_cost_eur < a.buying_cost_eur ? b : a, days[0]);
   const monthsSpanned = new Set(days.map(d => d.date.slice(0, 7))).size;
-  const t = computeTariff(totalConsumption, totalCost, network, margin, vat, monthsSpanned, pso);
-
-  document.getElementById("customStatCards").innerHTML = `
-    <div class="stat-card"><div class="stat-label">Highest-cost day</div><div class="stat-value">${highest.date}</div><div class="stat-meta">${fmtEur(highest.buying_cost_eur)}</div></div>
-    <div class="stat-card"><div class="stat-label">Lowest-cost day</div><div class="stat-value">${lowest.date}</div><div class="stat-meta">${fmtEur(lowest.buying_cost_eur)}</div></div>
-    <div class="stat-card"><div class="stat-label">Avg wholesale price</div><div class="stat-value">${fmtEur(blendedPrice)}/MWh</div></div>
-    <div class="stat-card"><div class="stat-label">Total consumption</div><div class="stat-value">${fmtKwh(totalConsumption)} kWh</div></div>
-  `;
-
-  renderBarChart("customChart", days.map(d => d.date.slice(5)), days.map(d => d.buying_cost_eur), (idx) => { document.getElementById("daySelect").value = days[idx].date; switchToTab("daily"); renderDaily(); });
-
-  document.getElementById("customExplainer").innerHTML = `
-    <h3>How this total was calculated</h3>
-    <p>
-      Buying cost = sum of (usage kWh × wholesale price ÷ 1000) across every 30-minute interval from ${from} to ${to} = ${fmtEur(totalCost)}<br>
-      Blended wholesale rate = ${fmtEur(totalCost)} ÷ ${fmtKwh(totalConsumption)} kWh = ${fmtEur(blendedPrice)}/MWh<br>
-      + margin (${margin}%) + network charge (€${network}/kWh) = €${t.retailExclVat.toFixed(4)}/kWh excl. VAT<br>
-      + VAT (${vat}%) = €${t.retailInclVat.toFixed(4)}/kWh incl. VAT<br>
-      × ${fmtKwh(totalConsumption)} kWh = ${fmtEur(t.energyInclVat)} energy charge<br>
-      + PSO levy (€${pso}/month × ${monthsSpanned} month(s), incl. VAT) = ${fmtEur(t.psoInclVat)}<br>
-      = <span class="total">${fmtEur(t.totalInclVat)} total (incl. VAT)</span>
-    </p>
-  `;
-  renderBandTable(days);
+  renderDayPeriod("custom", days, `from ${from} to ${to}`, monthsSpanned);
 }
 
 /* ---------- Shared chart helper ---------- */
@@ -548,11 +558,13 @@ function renderBarChart(canvasId, labels, values, onClickBar) {
       return;
     }
     const ctx = canvas.getContext("2d");
-    const min = Math.min(...values), max = Math.max(...values);
+    const nums = values.filter(v => v !== null && v !== undefined);
+    const min = Math.min(...nums), max = Math.max(...nums);
     const styles = getComputedStyle(document.documentElement);
     const teal = styles.getPropertyValue("--teal").trim();
     const copper = styles.getPropertyValue("--copper").trim();
     const colors = values.map(v => {
+      if (v === null || v === undefined) return teal;
       const t = max > min ? (v - min) / (max - min) : 0.5;
       return mixColor(teal, copper, t);
     });
@@ -582,8 +594,10 @@ function mixColor(hex1, hex2, t) {
 // real Excel formulas, not computed values, so whoever receives the file can
 // change Network charge / Margin / PSO levy / VAT on the Inputs sheet and
 // every other sheet recalculates in Excel itself. The only hardcoded numbers
-// are the raw consumption and buying cost (they come from matching meter data
-// against wholesale prices, which Excel can't redo on its own).
+// are consumption, priced consumption and buying cost (they come from matching
+// meter data against wholesale prices, which Excel can't redo on its own).
+// Any period whose usage isn't fully priced shows "Incomplete prices" instead
+// of a tariff.
 function buildTariffWorkbook(data, inputs) {
   const days = data.days;
   const FONT = "Arial";
@@ -594,45 +608,51 @@ function buildTariffWorkbook(data, inputs) {
   const yellowFill = { fill: { patternType: "solid", fgColor: { rgb: "FFFF00" } } };
   const titleStyle = { font: { bold: true, sz: 14, name: FONT } };
   const noteStyle = { font: { italic: true, sz: 9, color: { rgb: "666666" }, name: FONT } };
+  const warnStyle = { font: { bold: true, sz: 10, color: { rgb: "C97B3D" }, name: FONT } };
   const EUR2 = '"€"#,##0.00;("€"#,##0.00);"-"';
   const EUR4 = '"€"#,##0.0000;("€"#,##0.0000);"-"';
   const KWH0 = '#,##0;(#,##0);"-"';
   const PCT1 = '0.0%';
-  const txt = (v, s) => ({ t: "s", v: String(v), s });
-  const num = (v, s, z) => { const c = { t: "n", v, s }; if (z) c.z = z; return c; };
-  const formula = (f, s, z) => { const c = { t: "n", f, s }; if (z) c.z = z; return c; };
+  const txt = (v, st) => ({ t: "s", v: String(v), s: st });
+  const num = (v, st, z) => { const c = { t: "n", v, s: st }; if (z) c.z = z; return c; };
+  const formula = (f, st, z) => { const c = { t: "n", f, s: st }; if (z) c.z = z; return c; };
 
   const NET = "Inputs!$B$5", MARGIN = "Inputs!$B$6", PSO = "Inputs!$B$7", VAT = "Inputs!$B$8";
-  const COLUMNS = ["Period", "Consumption (kWh)", "Buying cost (€)", "Avg wholesale (€/MWh)",
-    "Blended wholesale (€/kWh)", "Retail excl. VAT (€/kWh)", "Retail incl. VAT (€/kWh)",
+  const COV = "0.999999";
+  const INC = '"Incomplete prices"';
+  const COLUMNS = ["Period", "Consumption (kWh)", "Priced consumption (kWh)", "Buying cost (€)", "Price coverage (%)",
+    "Avg wholesale (€/MWh)", "Blended wholesale (€/kWh)", "Retail excl. VAT (€/kWh)", "Retail incl. VAT (€/kWh)",
     "Energy charge excl. VAT (€)", "Energy charge incl. VAT (€)", "PSO excl. VAT (€)", "PSO incl. VAT (€)",
     "TOTAL excl. VAT (€)", "TOTAL incl. VAT (€)"];
-  const WIDTHS = [12, 17, 15, 17, 18, 18, 18, 20, 20, 14, 14, 16, 16];
-  const COLS = "ABCDEFGHIJKLM";
+  const WIDTHS = [12, 17, 19, 15, 14, 17, 18, 18, 18, 20, 20, 14, 14, 16, 16];
+  const COLS = "ABCDEFGHIJKLMNO";
 
-  function writePeriodRow(ws, r, label, consumption, cost, monthsSpanned, includePso) {
+  function writePeriodRow(ws, r, label, consumption, priced, cost, monthsSpanned, includePso) {
     ws[`A${r}`] = txt(label, blackFont);
     ws[`B${r}`] = num(Math.round(consumption * 1000) / 1000, blueFont, KWH0);
-    ws[`C${r}`] = num(Math.round(cost * 10000) / 10000, blueFont, EUR2);
-    ws[`D${r}`] = formula(`IF(B${r}=0,0,C${r}/B${r}*1000)`, blackFont, EUR2);
-    ws[`E${r}`] = formula(`IF(B${r}=0,0,C${r}/B${r})`, blackFont, EUR4);
-    ws[`F${r}`] = formula(`E${r}*(1+${MARGIN})+${NET}`, blackFont, EUR4);
-    ws[`G${r}`] = formula(`F${r}*(1+${VAT})`, blackFont, EUR4);
-    ws[`H${r}`] = formula(`F${r}*B${r}`, blackFont, EUR2);
-    ws[`I${r}`] = formula(`G${r}*B${r}`, blackFont, EUR2);
+    ws[`C${r}`] = num(Math.round(priced * 1000) / 1000, blueFont, KWH0);
+    ws[`D${r}`] = num(Math.round(cost * 10000) / 10000, blueFont, EUR2);
+    ws[`E${r}`] = formula(`IF(B${r}=0,1,C${r}/B${r})`, blackFont, PCT1);
+    ws[`F${r}`] = formula(`IF(C${r}=0,0,D${r}/C${r}*1000)`, blackFont, EUR2);
+    ws[`G${r}`] = formula(`IF(C${r}=0,0,D${r}/C${r})`, blackFont, EUR4);
+    ws[`H${r}`] = formula(`IF(E${r}<${COV},${INC},G${r}*(1+${MARGIN})+${NET})`, blackFont, EUR4);
+    ws[`I${r}`] = formula(`IF(ISNUMBER(H${r}),H${r}*(1+${VAT}),${INC})`, blackFont, EUR4);
+    ws[`J${r}`] = formula(`IF(ISNUMBER(H${r}),H${r}*B${r},${INC})`, blackFont, EUR2);
+    ws[`K${r}`] = formula(`IF(ISNUMBER(I${r}),I${r}*B${r},${INC})`, blackFont, EUR2);
     if (includePso) {
-      ws[`J${r}`] = formula(`${PSO}*${monthsSpanned}`, blackFont, EUR2);
-      ws[`K${r}`] = formula(`J${r}*(1+${VAT})`, blackFont, EUR2);
-      ws[`L${r}`] = formula(`H${r}+J${r}`, blackFont, EUR2);
-      ws[`M${r}`] = formula(`I${r}+K${r}`, boldFont, EUR2);
+      ws[`L${r}`] = formula(`${PSO}*${monthsSpanned}`, blackFont, EUR2);
+      ws[`M${r}`] = formula(`L${r}*(1+${VAT})`, blackFont, EUR2);
+      ws[`N${r}`] = formula(`IF(ISNUMBER(J${r}),J${r}+L${r},${INC})`, blackFont, EUR2);
+      ws[`O${r}`] = formula(`IF(ISNUMBER(K${r}),K${r}+M${r},${INC})`, boldFont, EUR2);
     } else {
-      ws[`J${r}`] = txt("n/a — see note", noteStyle);
-      ws[`K${r}`] = txt("n/a — see note", noteStyle);
-      ws[`L${r}`] = formula(`H${r}`, blackFont, EUR2);
-      ws[`M${r}`] = formula(`I${r}`, boldFont, EUR2);
+      ws[`L${r}`] = txt("n/a — see note", noteStyle);
+      ws[`M${r}`] = txt("n/a — see note", noteStyle);
+      ws[`N${r}`] = formula(`IF(ISNUMBER(J${r}),J${r},${INC})`, blackFont, EUR2);
+      ws[`O${r}`] = formula(`IF(ISNUMBER(K${r}),K${r},${INC})`, boldFont, EUR2);
     }
   }
   const header = (ws, row) => COLUMNS.forEach((n, i) => { ws[`${COLS[i]}${row}`] = txt(n, headerStyle); });
+  const pricedOfDay = d => d.priced_consumption_kwh !== undefined ? d.priced_consumption_kwh : d.consumption_kwh;
 
   const wb = XLSX.utils.book_new();
 
@@ -653,45 +673,57 @@ function buildTariffWorkbook(data, inputs) {
     wsI[`C${r}`] = txt(note, noteStyle);
   });
   wsI.A10 = txt("Change any value above, then save — every sheet in this workbook recalculates automatically from these four cells.", { font: { bold: true, italic: true, sz: 10, color: { rgb: "C97B3D" }, name: FONT } });
+  wsI.A11 = txt("Wholesale prices and usage are fixed values captured when this report was generated; if a period shows \"Incomplete prices\", regenerate the report once the missing prices are loaded.", noteStyle);
+  let lastInputRow = 11;
+  if (data.prices_are_simulated) {
+    wsI.A12 = txt("Note: the wholesale prices behind these figures are simulated (illustrative) — this system is not yet connected to live SEM-O settlement data.", warnStyle);
+    lastInputRow = 12;
+  }
   wsI["!cols"] = [{ wch: 34 }, { wch: 16 }, { wch: 60 }];
-  wsI["!ref"] = "A1:C10";
+  wsI["!ref"] = `A1:C${lastInputRow}`;
   XLSX.utils.book_append_sheet(wb, wsI, "Inputs");
 
   const byMonth = {};
   for (const d of days) {
     const m = d.date.slice(0, 7);
-    const b = byMonth[m] || (byMonth[m] = { consumption: 0, cost: 0 });
+    const b = byMonth[m] || (byMonth[m] = { consumption: 0, priced: 0, cost: 0 });
     b.consumption += d.consumption_kwh;
+    b.priced += pricedOfDay(d);
     b.cost += d.buying_cost_eur;
   }
   const months = Object.keys(byMonth).sort();
+  const nM = months.length, nD = days.length;
 
   const ws9 = {};
-  ws9.A1 = txt(`${months.length}-month summary — all usage combined into one blended tariff`, titleStyle);
+  ws9.A1 = txt(`${nM}-month summary — all usage combined into one blended tariff`, titleStyle);
   header(ws9, 3);
-  const totC = months.reduce((s, m) => s + byMonth[m].consumption, 0);
-  const totB = months.reduce((s, m) => s + byMonth[m].cost, 0);
-  writePeriodRow(ws9, 4, `${months[0]} to ${months[months.length - 1]}`, totC, totB, months.length, true);
-  ws9.A6 = txt(`Based on ${days.length} days of actual meter data across ${months.length} calendar months.`, noteStyle);
+  const totC = months.reduce((a, m) => a + byMonth[m].consumption, 0);
+  const totP = months.reduce((a, m) => a + byMonth[m].priced, 0);
+  const totB = months.reduce((a, m) => a + byMonth[m].cost, 0);
+  writePeriodRow(ws9, 4, `${months[0]} to ${months[nM - 1]}`, totC, totP, totB, nM, true);
+  ws9.A6 = txt(`Based on ${nD} days of actual meter data across ${nM} calendar months.`, noteStyle);
+  ws9.A7 = formula(`IF(E4<${COV},"WARNING: only "&TEXT(E4,"0.0%")&" of usage has a wholesale price. Tariffs show 'Incomplete prices' until the missing prices are loaded and this report is regenerated.","All usage in this period has a wholesale price.")`, warnStyle);
   ws9["!cols"] = WIDTHS.map(w => ({ wch: w }));
-  ws9["!ref"] = "A1:M6";
-  XLSX.utils.book_append_sheet(wb, ws9, "9-Month Summary");
+  ws9["!ref"] = "A1:O7";
+  XLSX.utils.book_append_sheet(wb, ws9, `${nM}-Month Summary`);
 
   const wsM = {};
   wsM.A1 = txt("Monthly breakdown", titleStyle);
   header(wsM, 3);
-  months.forEach((m, i) => writePeriodRow(wsM, 4 + i, m, byMonth[m].consumption, byMonth[m].cost, 1, true));
+  months.forEach((m, i) => writePeriodRow(wsM, 4 + i, m, byMonth[m].consumption, byMonth[m].priced, byMonth[m].cost, 1, true));
+  wsM[`A${5 + nM}`] = formula(`IF(COUNTIF(E4:E${3 + nM},"<${COV}")>0,COUNTIF(E4:E${3 + nM},"<${COV}")&" month(s) have incomplete wholesale prices — see the Price coverage column.","All months have a wholesale price.")`, warnStyle);
   wsM["!cols"] = WIDTHS.map(w => ({ wch: w }));
-  wsM["!ref"] = `A1:M${3 + months.length}`;
+  wsM["!ref"] = `A1:O${5 + nM}`;
   XLSX.utils.book_append_sheet(wb, wsM, "Monthly");
 
   const wsD = {};
   wsD.A1 = txt("Daily breakdown — every day of actual meter data", titleStyle);
-  wsD.A2 = txt("PSO levy is a flat monthly charge, not meaningful prorated to a single day — see it applied on the Monthly or 9-Month Summary sheets instead.", noteStyle);
+  wsD.A2 = txt("PSO levy is a flat monthly charge, not meaningful prorated to a single day — see it applied on the Monthly or summary sheets instead.", noteStyle);
+  wsD.A3 = formula(`IF(COUNTIF(E5:E${4 + nD},"<${COV}")>0,COUNTIF(E5:E${4 + nD},"<${COV}")&" day(s) have incomplete wholesale prices — see the Price coverage column.","All days have a wholesale price.")`, warnStyle);
   header(wsD, 4);
-  days.forEach((d, i) => writePeriodRow(wsD, 5 + i, d.date, d.consumption_kwh, d.buying_cost_eur, 0, false));
+  days.forEach((d, i) => writePeriodRow(wsD, 5 + i, d.date, d.consumption_kwh, pricedOfDay(d), d.buying_cost_eur, 0, false));
   wsD["!cols"] = WIDTHS.map(w => ({ wch: w }));
-  wsD["!ref"] = `A1:M${4 + days.length}`;
+  wsD["!ref"] = `A1:O${4 + nD}`;
   XLSX.utils.book_append_sheet(wb, wsD, "Daily");
 
   return wb;
@@ -699,6 +731,8 @@ function buildTariffWorkbook(data, inputs) {
 
 document.getElementById("downloadBtn").onclick = () => {
   if (!reportData) return;
+  const bad = monthRows().filter(r => !r.s.complete);
+  if (bad.length && !confirm(`Wholesale prices are missing for ${bad.map(r => r.month).join(", ")}. Those periods will show "Incomplete prices" in the workbook instead of a tariff. Download anyway?`)) return;
   const wb = buildTariffWorkbook(reportData, readInputs());
   const mprnLabel = (reportData.mprn || "customer").replace(/[^a-zA-Z0-9]/g, "");
   XLSX.writeFile(wb, `customer-tariff-report-${mprnLabel}.xlsx`);

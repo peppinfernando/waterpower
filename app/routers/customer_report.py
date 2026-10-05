@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
@@ -10,8 +12,8 @@ router = APIRouter(prefix="/api/customer-report", tags=["customer-report"])
 
 @router.post("/upload", response_model=schemas.CustomerReportResponse)
 async def upload_customer_report(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    if not (file.filename or "").lower().endswith((".xlsx", ".xls")):
-        raise HTTPException(400, "Please upload an Excel file (.xlsx or .xls).")
+    if not (file.filename or "").lower().endswith(".xlsx"):
+        raise HTTPException(400, "Please upload an .xlsx Excel file (if yours is .xls, open it in Excel and use Save As > Excel Workbook).")
 
     content = await file.read()
     if len(content) > customer_report_service.MAX_UPLOAD_BYTES:
@@ -28,6 +30,7 @@ async def upload_customer_report(file: UploadFile = File(...), db: Session = Dep
     return schemas.CustomerReportResponse(
         mprn=metadata.get("mprn"),
         profile_description=metadata.get("profile_description"),
+        prices_are_simulated=(os.getenv("SEMO_CLIENT", "mock").lower() == "mock"),
         days=days,
         warnings=parse_warnings + report_warnings,
     )
