@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Customer tariff report — WalterJr Tech Solutions</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<style>
+  :root {
+    --bg: #F5F6F8; --surface: #FFFFFF; --surface-2: #ECEEF3; --border: #DBDEE6;
+    --text: #1A1D29; --text-2: #5C6178; --text-3: #8B90A6;
+    --navy: #2D3250; --navy-2: #454B6B; --teal: #5B8DB8; --teal-2: #E4EDF3;
+    --copper: #C97B3D; --copper-2: #F5E3D0;
+    --shadow: 0 1px 2px rgba(45,50,80,0.07), 0 8px 24px rgba(45,50,80,0.06);
+    --radius: 12px;
+  }
+  html[data-theme="dark"] {
+    --bg: #14151F; --surface: #1D1F2E; --surface-2: #262838; --border: #383B52;
+    --text: #EBECF3; --text-2: #9CA0B8; --text-3: #666B85;
+    --navy: #8FA3D9; --navy-2: #B0C0E8; --teal: #7FA8CC; --teal-2: #1E2A38;
+    --copper: #E0985A; --copper-2: #3A2A18;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 12px 32px rgba(0,0,0,0.35);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; line-height: 1.5; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px 60px; }
+  h1, h2, h3 { font-family: 'Space Grotesk', sans-serif; color: var(--navy); margin: 0; }
+  code, .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  header { border-bottom: 1px solid var(--border); margin-bottom: 26px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; }
+  .brand-row { display: flex; align-items: center; gap: 9px; }
+  .brand-logo { flex-shrink: 0; }
+  .brand-word { font-weight: 600; font-size: 16px; }
+  .topbar-actions { display: flex; align-items: center; gap: 10px; }
+  .back-link { font-size: 14px; color: var(--text-2); text-decoration: none; display: flex; align-items: center; gap: 6px; }
+  .back-link:hover { color: var(--navy); }
+
+  h1.page-title { font-size: 26px; margin-bottom: 4px; }
+  .page-sub { color: var(--text-2); font-size: 14.5px; margin-bottom: 24px; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px 24px; margin-bottom: 20px; }
+  .controls { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+  .controls label { font-size: 13px; color: var(--text-2); display: flex; flex-direction: column; gap: 5px; }
+  input, select { font-family: 'Inter', sans-serif; font-size: 14px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+  button { font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 500; border-radius: 8px; cursor: pointer; padding: 9px 16px; border: 1px solid var(--border); background: var(--surface); color: var(--navy); transition: all 0.15s ease; }
+  button:hover { border-color: var(--teal); }
+  .btn-primary { background: var(--navy); color: white; border-color: var(--navy); }
+  .btn-primary:hover { background: var(--navy-2); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .icon-btn { padding: 8px; }
+  .icon-btn svg { width: 18px; height: 18px; stroke: var(--text-2); display: block; }
+
+  .empty-state { text-align: center; padding: 30px; color: var(--text-2); font-size: 14px; }
+
+  .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .tab-btn { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 6px; color: var(--text-2); font-weight: 500; }
+  .tab-btn.active { color: var(--navy); border-bottom-color: var(--teal); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); }
+  .stat-label { font-size: 12px; color: var(--text-2); margin-bottom: 6px; }
+  .stat-value { font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; }
+  .stat-meta { font-size: 11.5px; color: var(--text-3); margin-top: 3px; }
+
+  .chart-wrap { height: 280px; margin-bottom: 20px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; padding: 8px 10px; color: var(--text-2); font-weight: 500; border-bottom: 1px solid var(--border); font-size: 12px; }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; }
+  td:first-child, th:first-child { font-family: 'Inter', sans-serif; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: var(--surface-2); }
+  .table-scroll { overflow-x: auto; max-height: 480px; overflow-y: auto; }
+
+  .explainer { background: var(--surface-2); border-radius: var(--radius); padding: 18px 20px; }
+  .explainer h3 { font-size: 15px; margin-bottom: 10px; }
+  .explainer p { font-size: 13.5px; color: var(--text-2); line-height: 1.8; margin: 0; }
+  .explainer .total { color: var(--text); font-weight: 600; }
+  .note { font-size: 12.5px; color: var(--text-3); margin-top: 10px; }
+
+  .band-table-row td:first-child { text-transform: capitalize; }
+
+  @media (max-width: 700px) {
+    .tabs { overflow-x: auto; }
+    .controls { flex-direction: column; align-items: stretch; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap" style="padding-bottom:0;">
+    <div class="topbar">
+      <div class="brand-row">
+        <svg class="brand-logo" width="22" height="22" viewBox="0 0 40 40"><polyline points="5,10 13,30 20,15 27,30 35,10" fill="none" stroke="#2D3250" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20" cy="15" r="3.6" fill="#C97B3D"/></svg>
+        <span class="brand-word">WalterJr Tech Solutions</span>
+      </div>
+      <div class="topbar-actions">
+        <a href="/" class="back-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          Back to dashboard
+        </a>
+        <button id="themeToggle" class="icon-btn" aria-label="Toggle dark mode">
+          <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <h1 class="page-title">Customer tariff report</h1>
+  <p class="page-sub">Upload a customer's real meter data and see exactly what we'd have charged them — matched against real wholesale settlement prices, with every step of the calculation shown.</p>
+
+  <div class="card">
+    <div class="controls">
+      <label>Meter data file (.xlsx)
+        <input type="file" id="fileInput" accept=".xlsx,.xls">
+      </label>
+      <button class="btn-primary" id="uploadBtn" disabled>Upload</button>
+    </div>
+    <div id="uploadStatus"></div>
+  </div>
+
+  <div id="reportBody" style="display:none;">
+    <div class="card">
+      <div class="controls">
+        <label>Network charge (€/kWh)<input type="number" id="inNetwork" value="0" min="0" step="0.001" style="width:90px;"></label>
+        <label>Target margin (%)<input type="number" id="inMargin" value="20" min="0" step="1" style="width:70px;"></label>
+        <label>PSO levy (€/month)<input type="number" id="inPso" value="0.51" min="0" step="0.01" style="width:90px;"></label>
+        <label>VAT (%)<input type="number" id="inVat" value="9" min="0" step="0.1" style="width:70px;"></label>
+        <button class="btn-primary" id="recalcBtn">Recalculate</button>
+        <button id="downloadBtn" style="margin-left:auto;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-3px; margin-right:5px;"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16"/></svg>
+          Download Excel
+        </button>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="all">All 9 months</button>
+      <button class="tab-btn" data-tab="monthly">Monthly</button>
+      <button class="tab-btn" data-tab="daily">Daily</button>
+      <button class="tab-btn" data-tab="custom">Custom range</button>
+    </div>
+
+    <div class="tab-panel active" id="panel-all">
+      <div class="stat-cards" id="allStatCards"></div>
+      <div class="card"><div class="chart-wrap"><canvas id="allChart"></canvas></div></div>
+      <div class="card"><div class="table-scroll"><table><thead><tr><th>Month</th><th>Consumption (kWh)</th><th>Avg wholesale (€/MWh)</th><th>Buying cost (€)</th><th>Tariff excl. VAT (€)</th><th>Tariff incl. VAT (€)</th></tr></thead><tbody id="allTableBody"></tbody></table></div></div>
+      <div class="card explainer" id="allExplainer"></div>
+    </div>
+
+    <div class="tab-panel" id="panel-monthly">
+      <div class="controls" style="margin-bottom:16px;">
+        <label>Month<select id="monthSelect"></select></label>
+      </div>
+      <div class="stat-cards" id="monthlyStatCards"></div>
+      <div class="card"><div class="chart-wrap"><canvas id="monthlyChart"></canvas></div></div>
+      <div class="card"><div class="table-scroll"><table><thead><tr><th>Date</th><th>Consumption (kWh)</th><th>Avg wholesale (€/MWh)</th><th>Buying cost (€)</th></tr></thead><tbody id="monthlyTableBody"></tbody></table></div></div>
+      <div class="card explainer" id="monthlyExplainer"></div>
+    </div>
+
+    <div class="tab-panel" id="panel-daily">
+      <div class="controls" style="margin-bottom:16px;">
+        <label>Day<select id="daySelect"></select></label>
+      </div>
+      <div class="stat-cards" id="dailyStatCards"></div>
+      <div class="card"><div class="chart-wrap"><canvas id="dailyChart"></canvas></div></div>
+      <div class="card"><div class="table-scroll"><table><thead><tr><th>Time</th><th>Usage (kWh)</th><th>Wholesale price (€/MWh)</th><th>Buying cost (€)</th></tr></thead><tbody id="dailyTableBody"></tbody></table></div></div>
+      <div class="card explainer" id="dailyExplainer"></div>
+    </div>
+
+    <div class="tab-panel" id="panel-custom">
+      <div class="controls" style="margin-bottom:16px;">
+        <label>From<input type="date" id="customFrom"></label>
+        <label>To<input type="date" id="customTo"></label>
+        <button id="customApplyBtn">Apply</button>
+      </div>
+      <div class="stat-cards" id="customStatCards"></div>
+      <div class="card"><div class="chart-wrap"><canvas id="customChart"></canvas></div></div>
+      <div class="card"><div class="table-scroll"><table><thead><tr><th>Date</th><th>Consumption (kWh)</th><th>Avg wholesale (€/MWh)</th><th>Buying cost (€)</th></tr></thead><tbody id="customTableBody"></tbody></table></div></div>
+      <div class="card explainer" id="customExplainer"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:17px; margin-bottom:14px;">Hours by price band</h2>
+      <p class="note" style="margin-top:0; margin-bottom:14px;">Reflects whichever tab and selection is currently active above.</p>
+      <div class="table-scroll"><table><thead><tr><th>Band</th><th>Hours</th><th>Consumption (kWh)</th><th>Buying cost (€)</th></tr></thead><tbody id="bandTableBody"></tbody></table></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = "";
+async function apiFetch(url, opts) {
+  const res = await fetch(url, opts);
+  if (res.status === 401) { window.location.href = "/login"; return new Promise(() => {}); }
+  return res;
+}
+
+function root() { return document.documentElement; }
+function safeGetItem(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function safeSetItem(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function applyTheme(t) {
+  root().setAttribute("data-theme", t);
+  document.getElementById("themeIcon").innerHTML = t === "dark"
+    ? '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>'
+    : '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
+  safeSetItem("theme", t);
+}
+document.getElementById("themeToggle").onclick = () => applyTheme(root().getAttribute("data-theme") === "dark" ? "light" : "dark");
+applyTheme(safeGetItem("theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+
+let reportData = null;
+let charts = {};
+
+const fileInput = document.getElementById("fileInput");
+const uploadBtn = document.getElementById("uploadBtn");
+fileInput.onchange = () => { uploadBtn.disabled = !fileInput.files.length; };
+
+uploadBtn.onclick = async () => {
+  const file = fileInput.files[0];
+  const status = document.getElementById("uploadStatus");
+  if (!file) return;
+  uploadBtn.disabled = true;
+  status.innerHTML = `<div class="empty-state">Uploading and matching against wholesale prices — this can take a moment…</div>`;
+  document.getElementById("reportBody").style.display = "none";
+
+  const formData = new FormData();
+  formData.append("file", file);
+  let data;
+  try {
+    const res = await apiFetch(`${API_BASE}/api/customer-report/upload`, { method: "POST", body: formData });
+    data = await res.json();
+    if (!res.ok) {
+      status.innerHTML = `<div class="empty-state">${data.detail || "Upload failed — check the file format."}</div>`;
+      uploadBtn.disabled = false;
+      return;
+    }
+  } catch (e) {
+    status.innerHTML = `<div class="empty-state">Could not reach the API — try again.</div>`;
+    uploadBtn.disabled = false;
+    return;
+  }
+
+  // Rendering happens outside the network try/catch above — a chart or
+  // DOM error here is a different problem from a failed upload, and
+  // reporting it as "could not reach the API" would be actively
+  // misleading (the data did load; something else went wrong showing it).
+  reportData = data;
+  const warningsHtml = data.warnings.length ? `<p class="note" style="color:var(--copper);">${data.warnings.join(" ")}</p>` : "";
+  status.innerHTML = `<p class="note" style="margin-top:12px;"><strong>${data.profile_description || data.mprn || "Customer"}</strong>${data.mprn ? ` · MPRN ${data.mprn}` : ""} · ${data.days.length} day(s) loaded</p>${warningsHtml}`;
+  try {
+    initSelectors();
+    document.getElementById("reportBody").style.display = "block";
+    renderActiveTab();
+    fileInput.value = "";
+    uploadBtn.disabled = true;
+  } catch (e) {
+    console.error(e);
+    status.innerHTML += `<p class="note" style="color:var(--copper);">The data loaded correctly, but something went wrong displaying it (often a blocked chart library) — check the browser console, or try a hard refresh.</p>`;
+  }
+};
+
+function initSelectors() {
+  const months = [...new Set(reportData.days.map(d => d.date.slice(0, 7)))].sort();
+  const monthSelect = document.getElementById("monthSelect");
+  monthSelect.innerHTML = months.map(m => `<option value="${m}">${m}</option>`).join("");
+  const daySelect = document.getElementById("daySelect");
+  daySelect.innerHTML = reportData.days.map(d => `<option value="${d.date}">${d.date}</option>`).join("");
+  document.getElementById("customFrom").value = reportData.days[0].date;
+  document.getElementById("customTo").value = reportData.days[reportData.days.length - 1].date;
+}
+
+function readInputs() {
+  return {
+    network: parseFloat(document.getElementById("inNetwork").value) || 0,
+    margin: parseFloat(document.getElementById("inMargin").value) || 0,
+    pso: parseFloat(document.getElementById("inPso").value) || 0,
+    vat: parseFloat(document.getElementById("inVat").value) || 0,
+  };
+}
+
+function computeTariff(consumptionKwh, buyingCostEur, network, marginPct, vatPct, monthsSpanned, psoMonthly) {
+  if (!consumptionKwh) return { blended: 0, energyExclVat: 0, energyInclVat: 0, psoExclVat: psoMonthly * monthsSpanned, psoInclVat: psoMonthly * monthsSpanned * (1 + vatPct / 100), totalExclVat: 0, totalInclVat: 0, retailExclVat: 0, retailInclVat: 0 };
+  const blended = buyingCostEur / consumptionKwh;
+  const energyPlusMargin = blended * (1 + marginPct / 100);
+  const retailExclVat = energyPlusMargin + network;
+  const retailInclVat = retailExclVat * (1 + vatPct / 100);
+  const energyExclVat = retailExclVat * consumptionKwh;
+  const energyInclVat = retailInclVat * consumptionKwh;
+  const psoExclVat = psoMonthly * monthsSpanned;
+  const psoInclVat = psoExclVat * (1 + vatPct / 100);
+  return { blended, retailExclVat, retailInclVat, energyExclVat, energyInclVat, psoExclVat, psoInclVat, totalExclVat: energyExclVat + psoExclVat, totalInclVat: energyInclVat + psoInclVat };
+}
+
+function fmtEur(n) { return "€" + (n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 }); }
+function fmtKwh(n) { return (n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 }); }
+
+function renderBandTable(days) {
+  const bandNames = ["night", "day", "peak"];
+  const totals = Object.fromEntries(bandNames.map(n => [n, { hours: 0, consumption: 0, cost: 0 }]));
+  for (const d of days) {
+    for (const name of bandNames) {
+      const b = d.bands[name];
+      if (!b) continue;
+      totals[name].hours += b.hours;
+      totals[name].consumption += b.consumption_kwh;
+      totals[name].cost += b.buying_cost_eur;
+    }
+  }
+  document.getElementById("bandTableBody").innerHTML = bandNames.map(name => {
+    const b = totals[name];
+    return `<tr class="band-table-row"><td>${name}</td><td>${b.hours.toLocaleString(undefined,{maximumFractionDigits:1})}</td><td>${fmtKwh(b.consumption)}</td><td>${fmtEur(b.cost)}</td></tr>`;
+  }).join("");
+}
+
+/* ---------- Tabs ---------- */
+let activeTab = "all";
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.onclick = () => {
+    activeTab = btn.dataset.tab;
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b === btn));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === `panel-${activeTab}`));
+    renderActiveTab();
+  };
+});
+function switchToTab(tab) {
+  document.querySelector(`.tab-btn[data-tab="${tab}"]`).click();
+}
+function renderActiveTab() {
+  if (!reportData) return;
+  if (activeTab === "all") renderAll();
+  else if (activeTab === "monthly") renderMonthly();
+  else if (activeTab === "daily") renderDaily();
+  else if (activeTab === "custom") renderCustom();
+}
+document.getElementById("recalcBtn").onclick = renderActiveTab;
+
+/* ---------- All 9 months ---------- */
+function renderAll() {
+  const { network, margin, pso, vat } = readInputs();
+  const byMonth = {};
+  for (const d of reportData.days) {
+    const m = d.date.slice(0, 7);
+    const b = byMonth[m] || (byMonth[m] = { consumption: 0, cost: 0 });
+    b.consumption += d.consumption_kwh;
+    b.cost += d.buying_cost_eur;
+  }
+  const months = Object.keys(byMonth).sort();
+  const rows = months.map(m => {
+    const b = byMonth[m];
+    const avgPrice = b.consumption ? (b.cost / b.consumption * 1000) : 0;
+    const t = computeTariff(b.consumption, b.cost, network, margin, vat, 1, pso);
+    return { month: m, ...b, avgPrice, t };
+  });
+
+  document.getElementById("allTableBody").innerHTML = rows.map(r => `
+    <tr class="clickable" onclick="document.getElementById('monthSelect').value='${r.month}'; switchToTab('monthly'); renderMonthly();">
+      <td>${r.month}</td><td>${fmtKwh(r.consumption)}</td><td>${fmtEur(r.avgPrice)}</td><td>${fmtEur(r.cost)}</td><td>${fmtEur(r.t.totalExclVat)}</td><td>${fmtEur(r.t.totalInclVat)}</td>
+    </tr>`).join("");
+
+  const totalConsumption = rows.reduce((s, r) => s + r.consumption, 0);
+  const totalCost = rows.reduce((s, r) => s + r.cost, 0);
+  const blendedPrice = totalConsumption ? totalCost / totalConsumption * 1000 : 0;
+  const highest = rows.reduce((a, b) => b.cost > a.cost ? b : a, rows[0]);
+  const lowest = rows.reduce((a, b) => b.cost < a.cost ? b : a, rows[0]);
+  const periodTotal = computeTariff(totalConsumption, totalCost, network, margin, vat, months.length, pso);
+
+  document.getElementById("allStatCards").innerHTML = `
+    <div class="stat-card"><div class="stat-label">Highest-cost month</div><div class="stat-value">${highest.month}</div><div class="stat-meta">${fmtEur(highest.cost)}</div></div>
+    <div class="stat-card"><div class="stat-label">Lowest-cost month</div><div class="stat-value">${lowest.month}</div><div class="stat-meta">${fmtEur(lowest.cost)}</div></div>
+    <div class="stat-card"><div class="stat-label">Avg wholesale price</div><div class="stat-value">${fmtEur(blendedPrice)}/MWh</div></div>
+    <div class="stat-card"><div class="stat-label">Total consumption</div><div class="stat-value">${fmtKwh(totalConsumption)} kWh</div></div>
+  `;
+
+  renderBarChart("allChart", rows.map(r => r.month), rows.map(r => r.cost), (idx) => { document.getElementById("monthSelect").value = rows[idx].month; switchToTab("monthly"); renderMonthly(); });
+
+  document.getElementById("allExplainer").innerHTML = `
+    <h3>How this total was calculated</h3>
+    <p>
+      Buying cost = sum of (usage kWh × wholesale price ÷ 1000) across every 30-minute interval in all 9 months = ${fmtEur(totalCost)}<br>
+      Blended wholesale rate = ${fmtEur(totalCost)} ÷ ${fmtKwh(totalConsumption)} kWh = ${fmtEur(blendedPrice)}/MWh<br>
+      + margin (${margin}%) + network charge (€${network}/kWh) = €${periodTotal.retailExclVat.toFixed(4)}/kWh excl. VAT<br>
+      + VAT (${vat}%) = €${periodTotal.retailInclVat.toFixed(4)}/kWh incl. VAT<br>
+      × ${fmtKwh(totalConsumption)} kWh = ${fmtEur(periodTotal.energyInclVat)} energy charge<br>
+      + PSO levy (€${pso}/month × ${months.length} months, incl. VAT) = ${fmtEur(periodTotal.psoInclVat)}<br>
+      = <span class="total">${fmtEur(periodTotal.totalInclVat)} total (incl. VAT)</span>
+    </p>
+  `;
+  renderBandTable(reportData.days);
+}
+
+/* ---------- Monthly ---------- */
+function renderMonthly() {
+  const { network, margin, pso, vat } = readInputs();
+  const month = document.getElementById("monthSelect").value;
+  const days = reportData.days.filter(d => d.date.startsWith(month));
+  if (!days.length) return;
+
+  document.getElementById("monthlyTableBody").innerHTML = days.map(d => {
+    const avgPrice = d.avg_wholesale_price_eur_per_mwh ?? 0;
+    return `<tr class="clickable" onclick="document.getElementById('daySelect').value='${d.date}'; switchToTab('daily'); renderDaily();">
+      <td>${d.date}</td><td>${fmtKwh(d.consumption_kwh)}</td><td>${fmtEur(avgPrice)}</td><td>${fmtEur(d.buying_cost_eur)}</td>
+    </tr>`;
+  }).join("");
+
+  const totalConsumption = days.reduce((s, d) => s + d.consumption_kwh, 0);
+  const totalCost = days.reduce((s, d) => s + d.buying_cost_eur, 0);
+  const blendedPrice = totalConsumption ? totalCost / totalConsumption * 1000 : 0;
+  const highest = days.reduce((a, b) => b.buying_cost_eur > a.buying_cost_eur ? b : a, days[0]);
+  const lowest = days.reduce((a, b) => b.buying_cost_eur < a.buying_cost_eur ? b : a, days[0]);
+  const t = computeTariff(totalConsumption, totalCost, network, margin, vat, 1, pso);
+
+  document.getElementById("monthlyStatCards").innerHTML = `
+    <div class="stat-card"><div class="stat-label">Highest-cost day</div><div class="stat-value">${highest.date.slice(8)}</div><div class="stat-meta">${fmtEur(highest.buying_cost_eur)}</div></div>
+    <div class="stat-card"><div class="stat-label">Lowest-cost day</div><div class="stat-value">${lowest.date.slice(8)}</div><div class="stat-meta">${fmtEur(lowest.buying_cost_eur)}</div></div>
+    <div class="stat-card"><div class="stat-label">Avg wholesale price</div><div class="stat-value">${fmtEur(blendedPrice)}/MWh</div></div>
+    <div class="stat-card"><div class="stat-label">Total consumption</div><div class="stat-value">${fmtKwh(totalConsumption)} kWh</div></div>
+  `;
+
+  renderBarChart("monthlyChart", days.map(d => d.date.slice(8)), days.map(d => d.buying_cost_eur), (idx) => { document.getElementById("daySelect").value = days[idx].date; switchToTab("daily"); renderDaily(); });
+
+  document.getElementById("monthlyExplainer").innerHTML = `
+    <h3>How this total was calculated</h3>
+    <p>
+      Buying cost = sum of (usage kWh × wholesale price ÷ 1000) across every 30-minute interval in ${month} = ${fmtEur(totalCost)}<br>
+      Blended wholesale rate = ${fmtEur(totalCost)} ÷ ${fmtKwh(totalConsumption)} kWh = ${fmtEur(blendedPrice)}/MWh<br>
+      + margin (${margin}%) + network charge (€${network}/kWh) = €${t.retailExclVat.toFixed(4)}/kWh excl. VAT<br>
+      + VAT (${vat}%) = €${t.retailInclVat.toFixed(4)}/kWh incl. VAT<br>
+      × ${fmtKwh(totalConsumption)} kWh = ${fmtEur(t.energyInclVat)} energy charge<br>
+      + PSO levy (€${pso}/month, incl. VAT) = ${fmtEur(t.psoInclVat)}<br>
+      = <span class="total">${fmtEur(t.totalInclVat)} total (incl. VAT)</span>
+    </p>
+  `;
+  renderBandTable(days);
+}
+
+/* ---------- Daily ---------- */
+function renderDaily() {
+  const { network, margin, vat } = readInputs();
+  const date = document.getElementById("daySelect").value;
+  const day = reportData.days.find(d => d.date === date);
+  if (!day) return;
+
+  document.getElementById("dailyTableBody").innerHTML = day.half_hours.map(h => `
+    <tr><td>${h.time}</td><td>${h.consumption_kwh.toLocaleString(undefined,{maximumFractionDigits:2})}</td><td>${h.price_eur_per_mwh !== null ? fmtEur(h.price_eur_per_mwh) : "—"}</td><td>${fmtEur(h.buying_cost_eur)}</td></tr>
+  `).join("");
+
+  const priced = day.half_hours.filter(h => h.price_eur_per_mwh !== null);
+  const high = priced.length ? priced.reduce((a, b) => b.price_eur_per_mwh > a.price_eur_per_mwh ? b : a) : null;
+  const low = priced.length ? priced.reduce((a, b) => b.price_eur_per_mwh < a.price_eur_per_mwh ? b : a) : null;
+  const avgPrice = day.avg_wholesale_price_eur_per_mwh ?? 0;
+  const t = computeTariff(day.consumption_kwh, day.buying_cost_eur, network, margin, vat, 0, 0);
+
+  document.getElementById("dailyStatCards").innerHTML = `
+    <div class="stat-card"><div class="stat-label">High price</div><div class="stat-value">${high ? fmtEur(high.price_eur_per_mwh) + "/MWh" : "—"}</div><div class="stat-meta">${high ? high.time : ""}</div></div>
+    <div class="stat-card"><div class="stat-label">Low price</div><div class="stat-value">${low ? fmtEur(low.price_eur_per_mwh) + "/MWh" : "—"}</div><div class="stat-meta">${low ? low.time : ""}</div></div>
+    <div class="stat-card"><div class="stat-label">Avg price</div><div class="stat-value">${fmtEur(avgPrice)}/MWh</div></div>
+    <div class="stat-card"><div class="stat-label">Consumption</div><div class="stat-value">${fmtKwh(day.consumption_kwh)} kWh</div></div>
+  `;
+
+  renderBarChart("dailyChart", day.half_hours.map(h => h.time), day.half_hours.map(h => h.price_eur_per_mwh || 0), null);
+
+  document.getElementById("dailyExplainer").innerHTML = `
+    <h3>How this day's price was calculated</h3>
+    <p>
+      Buying cost = sum of (usage kWh × wholesale price ÷ 1000) across ${day.half_hours.length} half-hours = ${fmtEur(day.buying_cost_eur)}<br>
+      Blended wholesale rate for the day = ${fmtEur(day.buying_cost_eur)} ÷ ${fmtKwh(day.consumption_kwh)} kWh = ${fmtEur(avgPrice)}/MWh<br>
+      + margin (${margin}%) + network charge (€${network}/kWh) = €${t.retailExclVat.toFixed(4)}/kWh excl. VAT<br>
+      + VAT (${vat}%) = €${t.retailInclVat.toFixed(4)}/kWh incl. VAT<br>
+      × ${fmtKwh(day.consumption_kwh)} kWh = <span class="total">${fmtEur(t.energyInclVat)} energy charge (incl. VAT)</span>
+    </p>
+    <p class="note">PSO levy isn't shown here — it's a flat monthly charge, not meaningful prorated to a single day. See it applied on the Monthly, Custom range, or All 9 months tabs.</p>
+  `;
+  renderBandTable([day]);
+}
+
+/* ---------- Custom range ---------- */
+document.getElementById("customApplyBtn").onclick = renderCustom;
+function renderCustom() {
+  const { network, margin, pso, vat } = readInputs();
+  const from = document.getElementById("customFrom").value;
+  const to = document.getElementById("customTo").value;
+  const days = reportData.days.filter(d => d.date >= from && d.date <= to);
+  if (!days.length) {
+    document.getElementById("customStatCards").innerHTML = `<div class="empty-state">No data for this range.</div>`;
+    return;
+  }
+
+  document.getElementById("customTableBody").innerHTML = days.map(d => {
+    const avgPrice = d.avg_wholesale_price_eur_per_mwh ?? 0;
+    return `<tr class="clickable" onclick="document.getElementById('daySelect').value='${d.date}'; switchToTab('daily'); renderDaily();">
+      <td>${d.date}</td><td>${fmtKwh(d.consumption_kwh)}</td><td>${fmtEur(avgPrice)}</td><td>${fmtEur(d.buying_cost_eur)}</td>
+    </tr>`;
+  }).join("");
+
+  const totalConsumption = days.reduce((s, d) => s + d.consumption_kwh, 0);
+  const totalCost = days.reduce((s, d) => s + d.buying_cost_eur, 0);
+  const blendedPrice = totalConsumption ? totalCost / totalConsumption * 1000 : 0;
+  const highest = days.reduce((a, b) => b.buying_cost_eur > a.buying_cost_eur ? b : a, days[0]);
+  const lowest = days.reduce((a, b) => b.buying_cost_eur < a.buying_cost_eur ? b : a, days[0]);
+  const monthsSpanned = new Set(days.map(d => d.date.slice(0, 7))).size;
+  const t = computeTariff(totalConsumption, totalCost, network, margin, vat, monthsSpanned, pso);
+
+  document.getElementById("customStatCards").innerHTML = `
+    <div class="stat-card"><div class="stat-label">Highest-cost day</div><div class="stat-value">${highest.date}</div><div class="stat-meta">${fmtEur(highest.buying_cost_eur)}</div></div>
+    <div class="stat-card"><div class="stat-label">Lowest-cost day</div><div class="stat-value">${lowest.date}</div><div class="stat-meta">${fmtEur(lowest.buying_cost_eur)}</div></div>
+    <div class="stat-card"><div class="stat-label">Avg wholesale price</div><div class="stat-value">${fmtEur(blendedPrice)}/MWh</div></div>
+    <div class="stat-card"><div class="stat-label">Total consumption</div><div class="stat-value">${fmtKwh(totalConsumption)} kWh</div></div>
+  `;
+
+  renderBarChart("customChart", days.map(d => d.date.slice(5)), days.map(d => d.buying_cost_eur), (idx) => { document.getElementById("daySelect").value = days[idx].date; switchToTab("daily"); renderDaily(); });
+
+  document.getElementById("customExplainer").innerHTML = `
+    <h3>How this total was calculated</h3>
+    <p>
+      Buying cost = sum of (usage kWh × wholesale price ÷ 1000) across every 30-minute interval from ${from} to ${to} = ${fmtEur(totalCost)}<br>
+      Blended wholesale rate = ${fmtEur(totalCost)} ÷ ${fmtKwh(totalConsumption)} kWh = ${fmtEur(blendedPrice)}/MWh<br>
+      + margin (${margin}%) + network charge (€${network}/kWh) = €${t.retailExclVat.toFixed(4)}/kWh excl. VAT<br>
+      + VAT (${vat}%) = €${t.retailInclVat.toFixed(4)}/kWh incl. VAT<br>
+      × ${fmtKwh(totalConsumption)} kWh = ${fmtEur(t.energyInclVat)} energy charge<br>
+      + PSO levy (€${pso}/month × ${monthsSpanned} month(s), incl. VAT) = ${fmtEur(t.psoInclVat)}<br>
+      = <span class="total">${fmtEur(t.totalInclVat)} total (incl. VAT)</span>
+    </p>
+  `;
+  renderBandTable(days);
+}
+
+/* ---------- Shared chart helper ---------- */
+function renderBarChart(canvasId, labels, values, onClickBar) {
+  // Deliberately never throws — this function being unavailable (e.g. the
+  // Chart.js CDN blocked by a network policy or ad-blocker) must not take
+  // down the explainer or band table that come after it in each render
+  // function; the chart is the one part of the page allowed to degrade
+  // gracefully on its own rather than breaking everything downstream.
+  try {
+    const canvas = document.getElementById(canvasId);
+    if (charts[canvasId]) { charts[canvasId].destroy(); charts[canvasId] = null; }
+    if (typeof Chart === "undefined") {
+      canvas.replaceWith(Object.assign(document.createElement("div"), { className: "empty-state", textContent: "Chart unavailable (chart library didn't load)." , id: canvasId}));
+      return;
+    }
+    const ctx = canvas.getContext("2d");
+    const min = Math.min(...values), max = Math.max(...values);
+    const styles = getComputedStyle(document.documentElement);
+    const teal = styles.getPropertyValue("--teal").trim();
+    const copper = styles.getPropertyValue("--copper").trim();
+    const colors = values.map(v => {
+      const t = max > min ? (v - min) / (max - min) : 0.5;
+      return mixColor(teal, copper, t);
+    });
+    charts[canvasId] = new Chart(ctx, {
+      type: "bar",
+      data: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 3 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        onClick: onClickBar ? (evt, elements) => { if (elements.length) onClickBar(elements[0].index); } : undefined,
+        scales: { x: { ticks: { color: styles.getPropertyValue("--text-2").trim(), maxRotation: 0, autoSkip: true } }, y: { ticks: { color: styles.getPropertyValue("--text-2").trim() } } }
+      }
+    });
+  } catch (e) {
+    console.error("Chart render failed:", e);
+  }
+}
+function mixColor(hex1, hex2, t) {
+  const c1 = hex1.replace('#', '').match(/.{2}/g).map(h => parseInt(h, 16));
+  const c2 = hex2.replace('#', '').match(/.{2}/g).map(h => parseInt(h, 16));
+  const mixed = c1.map((v, i) => Math.round(v + (c2[i] - v) * t));
+  return `rgb(${mixed.join(',')})`;
+}
+
+/* ---------- Download (live-formula Excel workbook) ---------- */
+// Builds a 4-sheet workbook (Inputs, 9-Month Summary, Monthly, Daily) using
+// real Excel formulas, not computed values, so whoever receives the file can
+// change Network charge / Margin / PSO levy / VAT on the Inputs sheet and
+// every other sheet recalculates in Excel itself. The only hardcoded numbers
+// are the raw consumption and buying cost (they come from matching meter data
+// against wholesale prices, which Excel can't redo on its own).
+function buildTariffWorkbook(data, inputs) {
+  const days = data.days;
+  const FONT = "Arial";
+  const headerStyle = { font: { bold: true, color: { rgb: "FFFFFF" }, name: FONT }, fill: { patternType: "solid", fgColor: { rgb: "2D3250" } }, alignment: { horizontal: "center" } };
+  const blueFont = { font: { color: { rgb: "0000FF" }, name: FONT } };
+  const blackFont = { font: { color: { rgb: "000000" }, name: FONT } };
+  const boldFont = { font: { bold: true, name: FONT } };
+  const yellowFill = { fill: { patternType: "solid", fgColor: { rgb: "FFFF00" } } };
+  const titleStyle = { font: { bold: true, sz: 14, name: FONT } };
+  const noteStyle = { font: { italic: true, sz: 9, color: { rgb: "666666" }, name: FONT } };
+  const EUR2 = '"€"#,##0.00;("€"#,##0.00);"-"';
+  const EUR4 = '"€"#,##0.0000;("€"#,##0.0000);"-"';
+  const KWH0 = '#,##0;(#,##0);"-"';
+  const PCT1 = '0.0%';
+  const txt = (v, s) => ({ t: "s", v: String(v), s });
+  const num = (v, s, z) => { const c = { t: "n", v, s }; if (z) c.z = z; return c; };
+  const formula = (f, s, z) => { const c = { t: "n", f, s }; if (z) c.z = z; return c; };
+
+  const NET = "Inputs!$B$5", MARGIN = "Inputs!$B$6", PSO = "Inputs!$B$7", VAT = "Inputs!$B$8";
+  const COLUMNS = ["Period", "Consumption (kWh)", "Buying cost (€)", "Avg wholesale (€/MWh)",
+    "Blended wholesale (€/kWh)", "Retail excl. VAT (€/kWh)", "Retail incl. VAT (€/kWh)",
+    "Energy charge excl. VAT (€)", "Energy charge incl. VAT (€)", "PSO excl. VAT (€)", "PSO incl. VAT (€)",
+    "TOTAL excl. VAT (€)", "TOTAL incl. VAT (€)"];
+  const WIDTHS = [12, 17, 15, 17, 18, 18, 18, 20, 20, 14, 14, 16, 16];
+  const COLS = "ABCDEFGHIJKLM";
+
+  function writePeriodRow(ws, r, label, consumption, cost, monthsSpanned, includePso) {
+    ws[`A${r}`] = txt(label, blackFont);
+    ws[`B${r}`] = num(Math.round(consumption * 1000) / 1000, blueFont, KWH0);
+    ws[`C${r}`] = num(Math.round(cost * 10000) / 10000, blueFont, EUR2);
+    ws[`D${r}`] = formula(`IF(B${r}=0,0,C${r}/B${r}*1000)`, blackFont, EUR2);
+    ws[`E${r}`] = formula(`IF(B${r}=0,0,C${r}/B${r})`, blackFont, EUR4);
+    ws[`F${r}`] = formula(`E${r}*(1+${MARGIN})+${NET}`, blackFont, EUR4);
+    ws[`G${r}`] = formula(`F${r}*(1+${VAT})`, blackFont, EUR4);
+    ws[`H${r}`] = formula(`F${r}*B${r}`, blackFont, EUR2);
+    ws[`I${r}`] = formula(`G${r}*B${r}`, blackFont, EUR2);
+    if (includePso) {
+      ws[`J${r}`] = formula(`${PSO}*${monthsSpanned}`, blackFont, EUR2);
+      ws[`K${r}`] = formula(`J${r}*(1+${VAT})`, blackFont, EUR2);
+      ws[`L${r}`] = formula(`H${r}+J${r}`, blackFont, EUR2);
+      ws[`M${r}`] = formula(`I${r}+K${r}`, boldFont, EUR2);
+    } else {
+      ws[`J${r}`] = txt("n/a — see note", noteStyle);
+      ws[`K${r}`] = txt("n/a — see note", noteStyle);
+      ws[`L${r}`] = formula(`H${r}`, blackFont, EUR2);
+      ws[`M${r}`] = formula(`I${r}`, boldFont, EUR2);
+    }
+  }
+  const header = (ws, row) => COLUMNS.forEach((n, i) => { ws[`${COLS[i]}${row}`] = txt(n, headerStyle); });
+
+  const wb = XLSX.utils.book_new();
+
+  const wsI = {};
+  wsI.A1 = txt(`Customer tariff report — MPRN ${data.mprn || ""}`, titleStyle);
+  wsI.A2 = txt(data.profile_description || "", noteStyle);
+  wsI.A4 = txt("Editable assumptions", boldFont);
+  const rows = [
+    ["Network charge (€/kWh)", inputs.network, EUR4, "A per-kWh charge for using the electricity network (DUoS/TUoS). Verify the real current rate against ESB Networks' published Statement of Charges before relying on this for a real pricing decision."],
+    ["Target margin (%)", inputs.margin / 100, PCT1, "Applied on top of the wholesale (buying) cost."],
+    ["PSO levy (€/month)", inputs.pso, EUR2, "A flat monthly charge, not per-kWh — verify the current CRU rate before relying on it."],
+    ["VAT (%)", inputs.vat / 100, PCT1, "Applied last, on top of everything else."],
+  ];
+  rows.forEach(([label, value, fmt, note], i) => {
+    const r = 5 + i;
+    wsI[`A${r}`] = txt(label, blackFont);
+    wsI[`B${r}`] = num(value, { ...blueFont, ...yellowFill }, fmt);
+    wsI[`C${r}`] = txt(note, noteStyle);
+  });
+  wsI.A10 = txt("Change any value above, then save — every sheet in this workbook recalculates automatically from these four cells.", { font: { bold: true, italic: true, sz: 10, color: { rgb: "C97B3D" }, name: FONT } });
+  wsI["!cols"] = [{ wch: 34 }, { wch: 16 }, { wch: 60 }];
+  wsI["!ref"] = "A1:C10";
+  XLSX.utils.book_append_sheet(wb, wsI, "Inputs");
+
+  const byMonth = {};
+  for (const d of days) {
+    const m = d.date.slice(0, 7);
+    const b = byMonth[m] || (byMonth[m] = { consumption: 0, cost: 0 });
+    b.consumption += d.consumption_kwh;
+    b.cost += d.buying_cost_eur;
+  }
+  const months = Object.keys(byMonth).sort();
+
+  const ws9 = {};
+  ws9.A1 = txt(`${months.length}-month summary — all usage combined into one blended tariff`, titleStyle);
+  header(ws9, 3);
+  const totC = months.reduce((s, m) => s + byMonth[m].consumption, 0);
+  const totB = months.reduce((s, m) => s + byMonth[m].cost, 0);
+  writePeriodRow(ws9, 4, `${months[0]} to ${months[months.length - 1]}`, totC, totB, months.length, true);
+  ws9.A6 = txt(`Based on ${days.length} days of actual meter data across ${months.length} calendar months.`, noteStyle);
+  ws9["!cols"] = WIDTHS.map(w => ({ wch: w }));
+  ws9["!ref"] = "A1:M6";
+  XLSX.utils.book_append_sheet(wb, ws9, "9-Month Summary");
+
+  const wsM = {};
+  wsM.A1 = txt("Monthly breakdown", titleStyle);
+  header(wsM, 3);
+  months.forEach((m, i) => writePeriodRow(wsM, 4 + i, m, byMonth[m].consumption, byMonth[m].cost, 1, true));
+  wsM["!cols"] = WIDTHS.map(w => ({ wch: w }));
+  wsM["!ref"] = `A1:M${3 + months.length}`;
+  XLSX.utils.book_append_sheet(wb, wsM, "Monthly");
+
+  const wsD = {};
+  wsD.A1 = txt("Daily breakdown — every day of actual meter data", titleStyle);
+  wsD.A2 = txt("PSO levy is a flat monthly charge, not meaningful prorated to a single day — see it applied on the Monthly or 9-Month Summary sheets instead.", noteStyle);
+  header(wsD, 4);
+  days.forEach((d, i) => writePeriodRow(wsD, 5 + i, d.date, d.consumption_kwh, d.buying_cost_eur, 0, false));
+  wsD["!cols"] = WIDTHS.map(w => ({ wch: w }));
+  wsD["!ref"] = `A1:M${4 + days.length}`;
+  XLSX.utils.book_append_sheet(wb, wsD, "Daily");
+
+  return wb;
+}
+
+document.getElementById("downloadBtn").onclick = () => {
+  if (!reportData) return;
+  const wb = buildTariffWorkbook(reportData, readInputs());
+  const mprnLabel = (reportData.mprn || "customer").replace(/[^a-zA-Z0-9]/g, "");
+  XLSX.writeFile(wb, `customer-tariff-report-${mprnLabel}.xlsx`);
+};
+</script>
+</body>
+</html>

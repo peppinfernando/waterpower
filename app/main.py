@@ -103,6 +103,11 @@ def login_page():
     return _serve_static_file("login.html")
 
 
+@app.get("/customer-report")
+def customer_report_page():
+    return _serve_static_file("customer-report.html")
+
+
 @app.post("/login")
 async def login_submit(request: Request):
     return await _handle_login(request)

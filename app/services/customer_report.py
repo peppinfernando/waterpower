@@ -179,6 +179,7 @@ def build_customer_report(db: Session, records: List[dict]) -> Tuple[List[dict],
             "buying_cost_eur": 0.0,
             "priced_consumption_kwh": 0.0,  # denominator for the day's avg price — excludes unpriced intervals
             "bands": {b["name"]: {"hours": 0.0, "consumption_kwh": 0.0, "buying_cost_eur": 0.0} for b in DEFAULT_BANDS},
+            "half_hours": {},  # "HH:MM" -> {consumption_kwh, price_eur_per_mwh, buying_cost_eur} — the Daily view's detail
         })
 
         day["consumption_kwh"] += r["volume_kwh"]
@@ -188,13 +189,20 @@ def build_customer_report(db: Session, records: List[dict]) -> Tuple[List[dict],
             day["bands"][band["name"]]["hours"] += 0.25
             day["bands"][band["name"]]["consumption_kwh"] += r["volume_kwh"]
 
-        price = price_by_half_hour.get(_floor_to_half_hour(r["interval_start"]))
+        hh_start = _floor_to_half_hour(r["interval_start"])
+        hh_key = hh_start.strftime("%H:%M")
+        hh = day["half_hours"].setdefault(hh_key, {"consumption_kwh": 0.0, "price_eur_per_mwh": None, "buying_cost_eur": 0.0})
+        hh["consumption_kwh"] += r["volume_kwh"]
+
+        price = price_by_half_hour.get(hh_start)
         if price is None:
             missing_price_count += 1
             continue
         cost = r["volume_kwh"] * price / 1000.0  # price is EUR/MWh; volume is kWh
         day["buying_cost_eur"] += cost
         day["priced_consumption_kwh"] += r["volume_kwh"]
+        hh["price_eur_per_mwh"] = price
+        hh["buying_cost_eur"] += cost
         if band:
             day["bands"][band["name"]]["buying_cost_eur"] += cost
 
@@ -223,5 +231,14 @@ def build_customer_report(db: Session, records: List[dict]) -> Tuple[List[dict],
                     "buying_cost_eur": round(b["buying_cost_eur"], 4),
                 } for name, b in d["bands"].items()
             },
+            "half_hours": [
+                {
+                    "time": hh_key,
+                    "consumption_kwh": round(hh["consumption_kwh"], 3),
+                    "price_eur_per_mwh": round(hh["price_eur_per_mwh"], 2) if hh["price_eur_per_mwh"] is not None else None,
+                    "buying_cost_eur": round(hh["buying_cost_eur"], 4),
+                }
+                for hh_key, hh in sorted(d["half_hours"].items())
+            ],
         })
     return result, warnings

@@ -148,12 +148,20 @@ class CustomerReportBand(BaseModel):
     buying_cost_eur: float
 
 
+class CustomerReportHalfHour(BaseModel):
+    time: str
+    consumption_kwh: float
+    price_eur_per_mwh: Optional[float] = None
+    buying_cost_eur: float
+
+
 class CustomerReportDay(BaseModel):
     date: str
     consumption_kwh: float
     buying_cost_eur: float
     avg_wholesale_price_eur_per_mwh: Optional[float] = None
     bands: Dict[str, CustomerReportBand]
+    half_hours: List[CustomerReportHalfHour]
 
 
 class CustomerReportResponse(BaseModel):
